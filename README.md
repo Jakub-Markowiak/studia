@@ -23,6 +23,6 @@
 6. Metoda bisekcji, metoda Newtona, wyznaczanie rzędów tych metod.
 
 ## Dodatki
-1. Program konstruujący bootstrapowe przedziały ufności dla mediany próby.
-2. [Projekt grupowy strony do analizy danych Iris.csv](https://ti-projekt-2020.herokuapp.com) (Python, HTML, css, javascript)
-3. Kronika Galla Anonima (HTML, javascript, css)
+1. Program konstruujący bootstrapowe przedziały ufności dla mediany próby. (R)
+2. [Projekt grupowy strony do analizy danych Iris.csv.](https://ti-projekt-2020.herokuapp.com) (Python, HTML, css, javascript)
+3. Kronika Galla Anonima - [podgląd](https://i.imgur.com/BqFxfpW.png). (HTML, javascript, css)
