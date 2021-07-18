@@ -1,0 +1,515 @@
+\documentclass[12pt, a4paper]{article}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% dodatkowe pakiety LaTeX'a
+\usepackage[OT4]{polski}
+\usepackage[utf8]{inputenc}
+\usepackage[top=2.5cm, bottom=2.5cm, left=2cm, right=2cm]{geometry}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage[colorlinks=true, linkcolor=blue]{hyperref}
+\usepackage{bbm}
+\usepackage{amsmath}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ustawienia globalne
+<<ustawienia_globalne, echo=FALSE, warning=FALSE, message=FALSE>>=
+library(knitr)
+library(kableExtra)
+library(dplyr)
+library(ggplot2)
+library(grid)
+library(gridExtra)
+library(ggpubr)
+library(arules)
+library(xtable) #pakiet do tworzenia tabel w formacie LaTeX'a
+library(RColorBrewer)
+library(ggrepel)
+library(car)
+library(EnvStats)
+
+opts_chunk$set(fig.path='figure/', fig.align='center', fig.pos='H',fig.width=7, fig.height=4)
+
+# UWAGA: w razie potrzeby można zmieniać te ustawienia w danym chunk'u!
+@
+
+\begin{document}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% strona tytulowa
+\title{Sprawozdanie 5}
+\author{Jakub Markowiak \\ album 255705}
+\maketitle
+\tableofcontents
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Krótki opis zagadnienia}
+
+W tym sprawozdaniu zajmiemy się wykorzystaniem testów statystycznych do weryfikowania hipotez. Rozważymy testy t-Studenta dla pojedynczej próby, dla dwóch prób zależnych, dla dwóch prób niezależnych oraz test dla wariancji w rodzinie rozkładów normalnych.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Opis eksperymentów/analiz}
+
+Przeprowadzimy następujące analizy i eksperymenty:
+\begin{enumerate}
+  \item test t-Studenta dla pojedynczej próby,
+  \item test t-Studenta dla prób zależnych,
+  \item test t-Studenta dla prób niezależnych,
+  \item test dla wariancji rozkładu normalnego.
+\end{enumerate}
+
+
+\section{Wyniki}
+\subsection{Test t-Studenta dla pojedynczej próby}
+
+Dysponujemy wynikami testu laboratoryjnego dla 6 baterii. Zweryfikujemy hipotezę, że średni czas pracy baterii wynosi $\mu = 21.5$. Przyjęty przez nas poziom istotności to 0.01.
+
+<<A1, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height=8, fig.cap="Dane">>=
+
+wyniki <- c(19, 18, 22, 20, 16, 25)
+n <- length(wyniki)
+m <- 21.5
+alpha <- 0.01
+
+tab.dk <- data.frame(wyniki)
+tab.dk <- as.data.frame(t(tab.dk))
+rownames(tab.dk) <- c("Wynik [h]")
+colnames(tab.dk) <- c(1:6)
+tab.dk <- xtable::xtable(tab.dk, include.rownames=FALSE, row.names = FALSE, caption = "Wyniki testu laboratoryjnego", label = "tab:tabela_dk")
+tab.dk
+@
+
+Zweryfikujemy najpierw, czy te dane pochodzą z rozkładu normalnego.
+
+<<A2, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height=4, fig.cap="QQ-plot, badanie normalności rozkładu">>=
+test_shapiro <- shapiro.test(wyniki) # alfa = 0.05
+
+tab <- data.frame(c(test_shapiro$statistic, test_shapiro$p.value))
+tab <- as.data.frame(t(tab))
+colnames(tab) <- c("Statystyka W", "p-value")
+rownames(tab) <- c("wartość")
+tab <- xtable::xtable(tab, include.rownames=FALSE, row.names = FALSE, caption = "Test Shapiro-Wilka", label = "tab:tabela_normalnosc")
+
+tab
+@
+
+Widzimy, że wartość poziomu krytycznego jest wyższa niż 0.01, czyli przyjęty przez nas poziom istotności, zatem nie ma podstaw aby odrzucić hipotezę o normalności tego rozkładu.
+
+<<A3, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height=3, fig.cap="Q-Q plot, badanie normalności rozkładu">>=
+qqp(wyniki, main = "Q-Q Plot", id = FALSE)
+@
+
+Spoglądając na wykres Q-Q również nie mamy podstaw, aby stwierdzić, że nasze dane nie pochodzą z rozkładu normalnego.
+
+Sformuujemy teraz hipotezę:
+
+\begin{align*}
+H_0: &\mu = 21.5, \\
+H_1: &\mu \neq 21.5.
+\end{align*}
+
+W celu jej weryfikacji korzystamy z testu t-Studenta dla pojedynczej próby. Wykorzystujemy statystykę testową:
+
+\begin{align*}
+T = \frac{\overline{X} - \mu_0}{S/\sqrt{n}},
+\end{align*}
+
+gdzie
+
+\begin{align*}
+S = \sqrt{\frac{1}{n-1}\sum_{i=1}^{n}(X_i - \overline{X})^2}.
+\end{align*}
+
+Przedział ufności na poziomie ufności $1 - \alpha$ mają postać:
+
+\begin{align*}
+\left[L, P\right] = \left[\overline{X} - z_{(1-\alpha)/2}  \frac{S}{\sqrt{n}}, \overline{X} + z_{(1-\alpha)/2}  \frac{S}{\sqrt{n}}  \right].
+\end{align*}
+
+<<A4, echo=FALSE, eval=TRUE, results='asis', message=FALSE, error=FALSE, fig.height=3, fig.cap="Q-Q plot, badanie normalności rozkładu">>=
+#H_0 : m = 21.5
+#a) H_1 : m \neq 21.5
+
+t.student.neq <- t.test(wyniki, alternative = "two.sided", mu = m, conf.level = 1 - alpha)
+
+#i) przedziały ufności
+t.student.neq.conf.a <- t.student.neq$conf.int[1]
+t.student.neq.conf.b <- t.student.neq$conf.int[2]
+
+#ii) p-value
+t.student.neq.p <- t.student.neq$p.value
+
+#iii) obszar krytyczny
+t.student.neq.critic <- -qt(p=1-alpha/2, df=n-1)
+
+# wartość statystyki T:
+t.student.neq.T <- t.student.neq$statistic
+
+
+tab <- data.frame(t.student.neq.conf.a, t.student.neq.conf.b, t.student.neq.p, t.student.neq.critic, t.student.neq.T)
+colnames(tab) <- c("Confidence start", "Confidence end", "p-value", "critical value", "T")
+rownames(tab) <- c("wartość")
+
+tab <- xtable::xtable(tab, include.rownames=FALSE, row.names = FALSE, caption = "Test t-studenta, H_1: \\mu \\neq 21.5", label = "tab:tabela_normalnosc")
+tab
+
+X = c(-6:6)
+df <- data.frame(X)
+ggplot(df, aes(x = X)) +
+  stat_function(fun = dt,
+                args = list(df = n-1),
+                color = "black") +
+  geom_area(stat = "function", fun = dt, args = list(df = n-1), fill = "blue", xlim = c(-6, t.student.neq.critic)) +
+  geom_area(stat = "function", fun = dt, args = list(df = n-1), fill = "blue", xlim = c(-t.student.neq.critic, 6)) +
+  geom_vline(xintercept=t.student.neq.critic, linetype = "dashed", color = "blue") +
+  geom_vline(xintercept=-t.student.neq.critic, linetype = "dashed", color = "blue") +
+  geom_vline(xintercept = t.student.neq.T, color = "red", linetype = "dashed") +
+  ggtitle("Obszar krytyczny oraz wartość statystyki T")
+@
+
+Widzimy, że $\mu_0 = 21.5$ należy do przedziału ufności, a także p-value jest większe od 0.05, oraz wartość statystyki T dla naszej próby nie znalazła się w obszarze krytycznym. Stąd nie ma podstaw, aby odrzucić hipotezę zerową, więc możemy ją przyjąć na poziomie istotności 0.05.
+
+Sformuujemy teraz drugą hipotezę:
+
+\begin{align*}
+H_0: &\mu = 21.5, \\
+H_1: &\mu < 21.5.
+\end{align*}
+
+Ponownie do jej weryfikacji wykorzystamy test t-Studenta.
+
+<<A5, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height=2, fig.cap="Q-Q plot, badanie normalności rozkładu">>=
+#b) H_2 : m < 21.5
+
+t.student.le <- t.test(wyniki, alternative = "less", mu = m, conf.level = 1 - alpha)
+
+#i) przedziały ufności
+t.student.le.conf.a <- t.student.le$conf.int[1]
+t.student.le.conf.b <- t.student.le$conf.int[2]
+
+#ii) p-value
+t.student.le.p <- t.student.le$p.value
+
+#iii) obszar krytyczny
+t.student.le.critic <- -qt(p=1-alpha, df=n-1)
+
+t.student.le.T <- t.student.le$statistic
+
+tab <- data.frame(t.student.le.conf.a, t.student.le.conf.b, t.student.le.p, t.student.le.critic, t.student.le.T)
+colnames(tab) <- c("Confidence start", "Confidence end", "p-value", "critical value", "T")
+rownames(tab) <- c("wartość")
+
+tab <- xtable::xtable(tab, include.rownames=FALSE, row.names = FALSE, caption = "Test t-studenta, H_1: \\mu < 21.5", label = "tab:tabela_normalnosc")
+tab
+
+
+X = c(-6:6)
+df <- data.frame(X)
+ggplot(df, aes(x = X)) +
+  stat_function(fun = dt,
+                args = list(df = n-1),
+                color = "black") +
+  geom_area(stat = "function", fun = dt, args = list(df = n-1), fill = "blue", xlim = c(-6, t.student.le.critic)) +
+  geom_vline(xintercept=t.student.le.critic, linetype = "dashed", color = "blue") +
+  geom_vline(xintercept = t.student.le.T, color = "red", linetype = "dashed") +
+  ggtitle("Obszar krytyczny oraz wartość statystyki T")
+@
+
+Podobnie jak poprzednio widzimy, że $\mu_0 = 21.5$ należy do przedziału ufności, p-value jest większe od 0.05, oraz wartość statystyki T nie znalazła się w obszarze krytycznym. Stąd nie ma podstaw, aby odrzucić hipotezę zerową, więc możemy ją przyjąć na poziomie istotności 0.05.
+
+
+
+\subsection{Test t-Studenta dla prób zaleznych}
+
+Dysponujemy wynikami pomiarów ciśnienia tętniczego przed leczeniem (A) i po leczeniu (B). Zweryfikujemy na poziomie istotnosci $\alpha$ = 0:05 hipotezę, że lek ten powoduje istotny spadek ciśnienia u leczonych pacjentów.
+
+<<B2, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height=8, fig.cap="Definicja funkcji wyznaczającej przedziały ufności">>=
+
+A <- c(220, 185, 270, 285, 200, 295, 200, 190, 225, 230)
+B <- c(190, 175, 215, 260, 215, 195, 260, 150, 155, 175)
+
+
+tab.dk <- data.frame(A, B)
+tab.dk <- as.data.frame(t(tab.dk))
+colnames(tab.dk) <- c(1:10)
+tab.dk <- xtable::xtable(tab.dk, include.rownames=FALSE, row.names = FALSE, caption = "Wyniki pomiarów ciśnienia tętniczego", label = "tab:tabela_dk")
+tab.dk
+@
+
+Sprawdzimy, czy różnice między kolejnymi obserwacjami pochodzą z rozkładu normalnego.
+
+<<B4, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height=3, fig.cap="Q-Q plot, badanie normalności różnic">>=
+test_shapiro <- shapiro.test(B-A) # alfa = 0.05
+
+tab <- data.frame(c(test_shapiro$statistic, test_shapiro$p.value))
+tab <- as.data.frame(t(tab))
+colnames(tab) <- c("Statystyka W", "p-value")
+rownames(tab) <- c("wartość")
+tab <- xtable::xtable(tab, include.rownames=FALSE, row.names = FALSE, caption = "Test Shapiro-Wilka dla różnic", label = "tab:tabela_normalnosc")
+
+tab
+
+qqp(B-A, main = "Q-Q plot dla różnic", id = FALSE)
+@
+
+P-value jest wyższe od przyjętego przez nas poziomu istotności, stąd można przyjąć normalność rozkładu różnic. Również wykres Q-Q potwierdza nasze przypuszczenia.
+
+Sformuujemy teraz hipotezę:
+
+\begin{align*}
+H_0: &\mu_1 = \mu_2, \\
+H_1: &\mu_1 > \mu_2.
+\end{align*}
+
+W celu jej weryfikacji korzystamy z testu t-Studenta dla prób zależnych. Wykorzystujemy statystykę testową:
+
+\begin{align*}
+T = \frac{\overline{D}}{S_D/\sqrt{n}},
+\end{align*}
+
+gdzie
+
+\begin{align*}
+&\ovelrine{D} = (D_1 + D_2 + \ldots + D_n)/n, \\
+&D_i = X_i - Y_i,
+\end{align*}
+
+oraz
+
+\begin{align*}
+S_D^2 = \frac{1}{n-1}\sum_{i=1}^{n}(D_i - \overline{D})^2.
+\end{align*}
+
+<<B5, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height=3, fig.cap="Q-Q plot, badanie normalności różnic">>=
+# H0 : mA <= mB - spadek lub brak zmian ciśnienia
+# H1 : mB > 0 - wzrost ciśnienia
+alpha = 0.05
+
+t.dependent <- t.test(A,B, alternative="greater", paired = TRUE, conf.level = 1 - alpha)
+
+t.dependent.p <- t.dependent$p.value
+#p value mniejsze od alfa -> możemy odrzucić hipotezę zerową, tzn. przyjąć alternatywę
+
+t.dependent.conf.a <- t.dependent$conf.int[1]
+t.dependent.conf.b <- t.dependent$conf.int[2]
+#przedział ufności - [4.76, inf]
+t.dependent.T <- t.dependent$statistic
+
+tab <- data.frame(t.dependent.conf.a, t.dependent.conf.b, t.dependent.p, t.dependent.T)
+colnames(tab) <- c("Confidence start", "Confidence end", "p-value", "T")
+rownames(tab) <- c("wartość")
+
+tab <- xtable::xtable(tab, include.rownames=FALSE, row.names = FALSE, caption = "Test t-studenta, H_1: \\mu_1 > \\mu_2", label = "tab:tabela_normalnosc")
+tab
+@
+
+Widzimy, że p-value jest niższe od $\alpha = 0.05$, stąd odrzucamy $H_0$ i przyjmujemy $H_1$ na poziomie istotności $0.05$. Z wyznaczonego przedziału ufności możemy odczytać, że na poziomie ufności $0.95$ możemy stwierdzić, że wzrost ciśnienia jest większy od \Sexpr{t.dependent.conf.a}.
+
+\subsection{Test t-Studenta dla prób niezaleznych}
+
+Dysponujemy danymi z dwóch kopalń, które przedstawiają ilość popiołu (w procentach), który pozostał po spaleniu węgla.
+
+<<C1, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height=3, fig.cap="Badanie normalności - Q-Q plot">>=
+
+kopalnia_1 <- c(24.3, 20.8, 23.7, 21.3, 17.4) #ilość popiołu (%), który pozostał po spaleniu węgla
+kopalnia_2 <- c(18.2, 16.9, 20.2, 16.7)
+
+kopalnia_2.tab <- c(18.2, 16.9, 20.2, 16.7, "-")
+
+df <- data.frame(kopalnia_1, kopalnia_2.tab)
+
+df <- as.data.frame(t(df))
+
+colnames(df) <- c(1:5)
+rownames(df) <- c("Kopalnia 1", "Kopalnia 2")
+
+tab.dk <- xtable::xtable(df, include.rownames=FALSE, row.names = FALSE, caption = "Wyniki pomiarów ilosci popiołu", label = "tab:tabela_dk")
+tab.dk
+
+# Badanie normalnosci - kopalnia 1
+test_shapiro <- shapiro.test(kopalnia_1)
+
+tab <- data.frame(c(test_shapiro$statistic, test_shapiro$p.value))
+tab <- as.data.frame(t(tab))
+colnames(tab) <- c("Statystyka W", "p-value")
+rownames(tab) <- c("wartość")
+tab <- xtable::xtable(tab, include.rownames=FALSE, row.names = FALSE, caption = "Test Shapiro-Wilka dla danych z kopalni 1", label = "tab:tabela_normalnosc")
+tab
+
+qqp(kopalnia_1, main = "Q-Q plot dla danych z kopalni 1", id = FALSE)
+
+# Badanie normalnosci - kopalnia 2
+test_shapiro <- shapiro.test(kopalnia_2)
+
+tab <- data.frame(c(test_shapiro$statistic, test_shapiro$p.value))
+tab <- as.data.frame(t(tab))
+colnames(tab) <- c("Statystyka W", "p-value")
+rownames(tab) <- c("wartość")
+tab <- xtable::xtable(tab, include.rownames=FALSE, row.names = FALSE, caption = "Test Shapiro-Wilka dla danych z kopalni 2", label = "tab:tabela_normalnosc")
+tab
+
+qqp(kopalnia_2, main = "Q-Q plot dla danych z kopalni 2", id = FALSE)
+
+alpha = 0.05
+@
+
+Ponieważ p-value jest w obu przypadkach większe od \Sexpr{alpha}, możemy przyjąć, że nasze dane pochodzą z rozkładu normalnego. Wykresy Q-Q również nie zaprzeczyły normalności tych rozkładów. Sprawdzimy teraz, czy możemy założyć, że dla danych z kopalni 1 i kopalni 2 mamy jednakową wariancję. Rozpatrujemy hipotezę na poziomie istotności $\alpha = 0.05$:
+
+\begin{align*}
+H_0: &\sigma_1 = \sigma_2, \\
+H_1: &\sigma_1 \neq \sigma_2.
+\end{align*}
+
+<<C2, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height=3, fig.cap="Badanie normalności - Q-Q plot">>=
+test_wariancji <- var.test(kopalnia_1,kopalnia_2, conf.level = 1 - alpha)
+
+# H0 : ilość spalonego popiołu jest taka sama w obu kopalniach
+
+tab <- data.frame(test_wariancji$conf.int[1], test_wariancji$conf.int[2], test_wariancji$p.value)
+colnames(tab) <- c("Confidence start", "Confidence end", "p-value")
+rownames(tab) <- c("wartość")
+
+tab <- xtable::xtable(tab, include.rownames=FALSE, row.names = FALSE, caption = "Var Test, H_1: \\sigma_1 \\neq \\sigma_2", label = "tab:tabela_normalnosc")
+tab
+@
+
+Ponieważ p-value jest większe od $\alpha = 0.05$, możemy przyjąć hipotezę zerową, zatem przyjmujemy, że w obu rozkładach jest taka sama wariancja.
+
+Zweryfikujemy następującą hipotezę: 
+
+\begin{align*}
+H_0: &\mu_1 = \mu_2, \\
+H_1: &\mu_1 \neq \mu_2,
+\end{align*}
+gdzie $\mu_k, k \in \{1, 2\}$ -- średnia ilość popiołu, który zostaje po spaleniu węgla z kopalni $k$.
+
+W celu jej weryfikacji korzystamy z testu t-Studenta dla prób niezależnych. Wykorzystujemy statystykę testową:
+
+\begin{align*}
+T = \frac{\overline{X} - \overline{Y}}{S_p\sqrt{\frac{1}{n_1} + \frac{1}{n_2}}}
+\end{align*}
+
+gdzie
+
+\begin{align*}
+S_p^2 = \frac{(n_1-1)S_1^2 + (n_2 - 1)S_2^2}{n_1 + n_2 - 2}
+\end{align*}
+
+oraz $S_i^2, i \in \{1, 2\}$ -- wariancja w i-tej próbie.
+<<C3, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height=3, fig.cap="Badanie normalności - Q-Q plot">>=
+# a) H1: ilość spalonego popiołu w K1 =/= w K2
+
+test_1 <- t.test(x=kopalnia_1, y=kopalnia_2,conf.level = 1-alpha, var.equal = TRUE)
+
+tab <- data.frame(test_1$conf.int[1], test_1$conf.int[2], test_1$p.value)
+colnames(tab) <- c("Confidence start", "Confidence end", "p-value")
+rownames(tab) <- c("wartość")
+
+tab <- xtable::xtable(tab,  include.rownames=FALSE, row.names = FALSE, caption = "test t-Studenta, H_1: \\mu_1 \\neq \\mu_2", label = "tab:tabela_normalnosc")
+tab
+@
+
+Ponieważ p-value jest większe niż $\alpha = 0.05$, nie ma podstaw do odrzucenia $H_0$, zatem przyjmujemy $H_0$. 
+Na poziomie ufności $0.95$ możemy również stwierdzić, że różnica między obiema średnimi znajduje się w przedziale $\left[-0.19, 7.19\right]$.
+
+Zweryfikujemy teraz następującą hipotezę: 
+
+\begin{align*}
+H_0: &\mu_1 = \mu_2, \\
+H_1: &\mu_1 > \mu_2,
+\end{align*}
+gdzie $\mu_k, k \in \{1, 2\}$ -- średnia ilość popiołu, który zostaje po spaleniu węgla z kopalni $k$.
+
+<<C4, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height=3, fig.cap="Badanie normalności - Q-Q plot">>=
+# b) H1: ilość spalonego popiołu w K1 > w K2
+
+test_1 <- t.test(x=kopalnia_1, y=kopalnia_2, conf.level = 1-alpha, var.equal = TRUE, alternative = "greater")
+
+tab <- data.frame(test_1$conf.int[1], test_1$conf.int[2], test_1$p.value)
+colnames(tab) <- c("Confidence start", "Confidence end", "p-value")
+rownames(tab) <- c("wartość")
+
+tab <- xtable::xtable(tab,  include.rownames=FALSE, row.names = FALSE, caption = "test t-Studenta, H_1: \\mu_1 > \\mu_2", label = "tab:tabela_normalnosc")
+tab
+@
+
+Ponieważ p-value jest mniejsza niż $\alpha = 0.05$, odrzucamy hipotezę $H_0$, zatem przyjmujemy $H_1$. 
+Na poziomie ufności $0.95$ możemy również stwierdzić, że różnica między obiema średnimi znajduje się w przedziale $\left[-0.19, 7.19\right]$.
+
+\subsection{Test dla wariancji rozkładu normalnego}
+
+Dysponujemy następującymi danymi, z założenia z rozkładu normalnego:
+
+<<D1, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height=8, fig.cap="Definicja funkcji wyznaczającej przedziały ufności">>=
+
+n <- 5
+wyniki.var <- c(8.99, 9.01, 8.98, 9, 9.01)
+alpha = 0.05
+
+df <- data.frame(wyniki.var)
+
+df <- as.data.frame(t(df))
+
+colnames(df) <- c(1:5)
+rownames(df) <- c("wyniki")
+
+tab.dk <- xtable::xtable(df, include.rownames=FALSE, row.names = FALSE, caption = "Wyniki pomiarów z rozkładu normalnego", label = "tab:tabela_dk")
+tab.dk
+@
+
+Zweryfikujemy następującą hipotezę na poziomie istotności $\alpha = 0.05$.
+\begin{align*}
+H_0: &\sigma^2 = 0,0001, \\
+H_1: &\sigma^2 \neq 0,0001,
+\end{align*}
+gdzie $\sigma^2$ -- wariancja pomiarów. 
+
+Wykorzystujemy test dla wariancji w rodzinie rozkładów normalnych, dla którego statystyką testową jest:
+\begin{align}
+\chi^2 = \frac{(n-1)S^2}{\sigma_0^2}.
+\end{align}
+
+Przedział ufności na poziomie ufności $1 - \alpha$ ma postać:
+
+\begin{align*}
+\left[\frac{(n-1)S^2}{\chi^2_{(1-\alpha)/2, n-1}},
+\frac{(n-1)S^2}{\chi^2_{(\alpha/2), n-1}} \right]
+\end{align*}
+
+<<D2, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height=8, fig.cap="Definicja funkcji wyznaczającej przedziały ufności">>=
+# Zakładamy normalność
+
+# H_0 : wariancja = 0.0001
+
+# H_1 : wariancja =/= 0.0001
+
+test_1 <- varTest(x = wyniki.var, alternative = "two.sided", conf.level = 1 - alpha, sigma.squared = 0.0001) 
+
+tab <- data.frame(test_1$conf.int[1], test_1$conf.int[2], test_1$p.value)
+colnames(tab) <- c("Confidence start", "Confidence end", "p-value")
+rownames(tab) <- c("wartość")
+
+tab <- xtable::xtable(tab, digits = 10, include.rownames=FALSE, row.names = FALSE, caption = "test t-Studenta, H_1: \\sigma^2 = 0.0001", label = "tab:tabela_normalnosc")
+tab
+@
+
+Ponieważ p-value jest większe od $\alpha = 0.05$ oraz $\sigma^2_0 = 0,0001$ znajduje się wewnątrz przedziału ufności, przyjmujemy hipotezę $H_0$ i odrzucamy hipotezę $H_1$ na poziomie istotności $\alpha$.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Podsumowanie}
+Poniżej wypunktujemy najważniejsze wnioski, jakie można wyciągnąć z przeprowadzanych analiz:
+\begin{itemize}
+\item przed zastosowaniem testu ważne jest sprawdzenie, czy badane dane spełniają założenia,
+\item wykorzystanie testu Shapiro-Wilka oraz wykresu Q-Q, pozwala na zweryfikowanie, czy nasze dane pochodzą z rozkładu normalnego,
+\item wykorzystanie przedziałów ufności oraz p-value pozwala weryfikować hipotezy.
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\end{document}
+
+
+
+
+

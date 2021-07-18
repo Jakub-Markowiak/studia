@@ -1,0 +1,403 @@
+\documentclass[12pt, a4paper]{article}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% dodatkowe pakiety LaTeX'a
+\usepackage[OT4]{polski}
+\usepackage[utf8]{inputenc}
+\usepackage[top=2.5cm, bottom=2.5cm, left=2cm, right=2cm]{geometry}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage[colorlinks=true, linkcolor=blue]{hyperref}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ustawienia globalne
+<<ustawienia_globalne, echo=FALSE, warning=FALSE, message=FALSE>>=
+library(MASS)
+library(knitr)
+library(kableExtra)
+library(dplyr)
+library(xtable) #pakiet do tworzenia tabel w formacie LaTeX'a
+opts_chunk$set(fig.path='figure/', fig.align='center', fig.pos='H',fig.width=5, fig.height=4)
+# UWAGA: w razie potrzeby można zmieniać te ustawienia w danym chunk'u!
+@
+
+
+\begin{document}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% strona tytulowa
+\title{Sprawozdanie 1}
+\author{Jakub Markowiak \\ album 255705}
+\maketitle
+\tableofcontents
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Krótki opis zagadnienia}
+
+W tym sprawozdaniu sprawdzimy zastosowanie podstawowych statystyk opisowych oraz spróbujemy na ich podstawie zinterpretować dane \verb+survey+ z pakietu \verb+MASS+. Wykonamy tabele liczności i częstości oraz tabele wielodzielcze dla cech jakościowych. Zbadamy również odporność miar położenia i rozproszenia na obserwacje odstające oraz poznamy definicję i zastosowanie współczynnika zmienności.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Opis eksperymentów/analiz}
+
+Przeprowadzimy następujące analizy i eksperymenty:
+\begin{enumerate}
+  \item analiza opisowa danych \verb+survey+ z pakietu \verb+MASS+ dla cech ilościowych,
+  \item analiza opisowa danych \verb+survey+ z pakietu \verb+MASS+ dla cech jakościowych,
+  \item badanie odporności miar położenia i rozproszenia na obserwacje odstające,
+  \item zdefiniowanie i zastosowanie współczynnika zmienności w porównaniu dwóch cech.
+\end{enumerate}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Wyniki}
+\subsection{Analiza opisowa danych survey z pakietu MASS dla cech ilościowych}
+Rozpoczniemy od wczytania danych \verb+survey+ z pakietu \verb+MASS+ oraz zbadania liczby obserwacji, liczby cech jakościowych i ilościowych oraz sprawdzenia, czy w danych występują brakujące wartości.
+
+Używając kilku podstawowych funkcji (\verb+ncol, nrow, sapply+) uzyskujemy następujące informacje:
+
+<<tabela1, echo=FALSE, eval=TRUE, results='asis'>>=
+data("survey")
+#Przeniesienie "survey" do obszaru roboczego
+attach(survey)
+
+#Sprawdzenie liczby cech
+liczba.cech <- ncol(survey)
+#Sprawdzenie liczby obserwacji
+liczba.obserwacji <- nrow(survey)
+
+#Sprawdzenie, jakiego typu są dane zmienne
+id.numeric <- which(sapply(survey, is.numeric))
+id.factor <- which(sapply(survey, is.factor))
+
+#Liczba cech ilościowych
+liczba.cech.ilo <- dim(cbind(id.numeric))[1]
+
+#Liczba cech jakościowych
+liczba.cech.jako <- dim(cbind(id.factor))[1]
+
+#Zliczenie brakujących rekordów
+na.sum <- sum(is.na(df))
+
+wyniki <- data.frame(a = c(liczba.cech),
+                     b = c(liczba.obserwacji),
+                     c = c(liczba.cech.ilo),
+                     d = c(liczba.cech.jako),
+                     e = c(na.sum))
+colnames(wyniki) <- c("Liczba cech","Liczba obserwacji","Cechy ilościowe","Cechy jakościowe","Brakujące wartości")
+rownames(wyniki) <- c("")
+tab1 <- xtable( wyniki, digits = 3, include.rownames=FALSE, row.names = FALSE, caption = "Wstępne spojrzenie na dane", label = "tab:tabela1")
+print(tab1, type = "latex", table.placement = "H")
+@
+
+Następnie wyznaczymy podstawowe statystyki opisowe dla cech \verb+Height+ oraz \verb+Age+. Zdefiniujemy pomocniczą funkcję \verb+moda+ obliczającą modę z próbki oraz funkcję \verb+my.summary+ działającą analogicznie do domyślnego \verb+summary+.
+
+<<definicja_dwoch_funkcji, echo=TRUE, eval=TRUE>>=
+moda <- function(v) {
+  uniqv <- unique(na.omit(v))
+  uniqv[which.max(tabulate(match(na.omit(v), uniqv)))]
+}
+
+my.summary <- function(x)
+{
+  wskazniki <- c(Srednia=mean(x,na.rm=T), 
+                  Mediana=median(x,na.rm=T), 
+                  IQR=IQR(x,na.rm=T), 
+                  Min=min(x,na.rm=T), 
+                  Maks=max(x,na.rm=T),
+                  Odch.stand.=sd(x,na.rm=T),
+                  Rozstep=max(x,na.rm=T)-min(x,na.rm=T),
+                  Moda=moda(x))
+  return(wskazniki)
+}
+@
+
+Wykorzystując funkcję \verb+my.summary+ otrzymujemy podstawowe wskaźniki sumaryczne.
+
+<<tabela2, echo=FALSE, eval=TRUE, results='asis'>>=
+library(kableExtra) # formatowanie tabel
+nazwy.wskaznikow <- names(my.summary(Height))
+nazwy.zmiennych <- c("Height","Age")
+Height.summary <- as.vector(my.summary(Height))
+Age.summary <- as.vector(my.summary(Age))
+summary.matrix <- rbind(Height.summary, Age.summary)
+row.names(summary.matrix) <- nazwy.zmiennych
+colnames(summary.matrix) <- nazwy.wskaznikow
+
+print(summary.matrix %>% kbl(caption="Podstawowe wskazniki sumaryczne dla Height i Age", digits = 2, position="h") %>% kable_styling(),table.placement = "H")
+
+#Wyświetlenie w pliku
+@
+
+Spoglądając na średnią i odstęp międzykwartylowy widzimy, że zdecydowana większość badanych to młodzi ludzie. Większe zróżnicowanie jest natomiast widoczne we wzroście.
+
+Wyznaczymy teraz przedział typowych wartości dla badanych cech. W tym celu korzystamy ze wzoru
+\begin{equation}
+\left[\bar{X} - S, \bar{X} + S\right]
+\end{equation}
+gdzie $\bar{X}$ - średnia próbkowa, $S$ - odchylenie standardowe.
+Korzystając z wcześniejszych obliczeń otrzymujemy
+
+<<tabela3, echo=FALSE, eval=TRUE, results='asis'>>=
+
+#Średnia próbkowa i odchylenie standardowe
+
+Age.mean <- mean(Age)
+Age.sd <- sd(Age)
+
+Height.mean <- mean(Height,na.rm=T)
+Height.sd <- sd(Height,na.rm=T)
+
+#Przedział typowych wartości dla Age
+Age.ptw <- c(Age.mean-Age.sd,Age.mean+Age.sd)
+
+#Przedział typowych wartości dla Height
+Height.ptw <- c(Height.mean-Height.sd,Height.mean+Height.sd)
+
+#Sprawdzenie, ile obserwacji znalazło się w przedziale
+
+#Dla cechy Age
+Age.ptw.count <- table(Age>Age.ptw[1],Age<Age.ptw[2])[2]
+Age.stosunek <- Age.ptw.count/liczba.obserwacji*100
+
+#Dla cechy Height
+Height.ptw.count <- table(Height>Height.ptw[1], Height<Height.ptw[2])[4]
+Height.stosunek <- Height.ptw.count/liczba.obserwacji*100
+
+
+wyniki <- data.frame(a = c(Age.ptw[1],Height.ptw[1]),
+                     b = c(Age.ptw[2],Height.ptw[2]),
+                     c = c(Age.ptw.count,Height.ptw.count),
+                     d = c(Age.stosunek,Height.stosunek))
+colnames(wyniki) <- c("X-S","X+S","Obs. w przedziale","% wszystkich")
+rownames(wyniki) <- c("Age","Height")
+tab1 <- xtable( wyniki, digits = 3, caption = "Przedział typowych wartości",label = "tab:tabela2")
+print(tab1, align="|", type = "latex", table.placement = "H")
+@
+
+Ustalamy teraz zmienną \verb+Sex+ jako zmienną grupującą. Policzymy wartości średnie oraz rozrzut cech \verb+Height+ oraz \verb+Age+ w zależności od przynależności do grupy.
+
+<<kolejny_kod, echo=FALSE, EVAL=TRUE, warning=FALSE, message=FALSE, results='asis'>>=
+
+Age.statystyki.opisowe <- 
+  survey %>%
+  group_by(Sex) %>%
+  select(Age) %>%
+  summarise_each(funs(mean(., na.rm = TRUE),sd(., na.rm = TRUE),IQR(., na.rm = TRUE)))
+
+Height.statystyki.opisowe <- 
+  survey %>%
+  group_by(Sex) %>%
+  select(Height) %>%
+  summarise_each(funs(mean(., na.rm = TRUE),sd(., na.rm = TRUE),IQR(., na.rm = TRUE)))
+
+Age.statystyki.opisowe <- na.omit(as.data.frame(Age.statystyki.opisowe))
+#Wyświetlenie statystyk opisowych dla cechy Age
+colnames(Age.statystyki.opisowe)[2] <- "Średnia"
+colnames(Age.statystyki.opisowe)[3] <- "Odch. stand."
+colnames(Age.statystyki.opisowe)[4] <- "IQR"
+
+print(Age.statystyki.opisowe %>%
+  kbl(caption = "Średnia, odchylenie standardowe oraz IQR dla Age",  position='h') %>%
+  kable_styling(),table.placement="H")
+
+#Pozbycie się brakujących wartości
+Height.statystyki.opisowe <- na.omit(as.data.frame(Height.statystyki.opisowe))
+
+#Wyświetlenie statystyk opisowych dla cechy Height
+colnames(Height.statystyki.opisowe)[2] <- "Średnia"
+colnames(Height.statystyki.opisowe)[3] <- "Odch. stand."
+colnames(Height.statystyki.opisowe)[4] <- "IQR"
+
+print(Height.statystyki.opisowe %>%
+  kbl(caption = "Średnia, odchylenie standardowe oraz IQR dla Height", position='h') %>%
+  kable_styling(),table.placement="H")
+
+@
+
+
+Możemy zauważyć, że badane osoby były w podobnym wieku, natomiast znaczne różnice występują przy średnim wzroście -- u kobiet jest znacznie mniejszy niż u mężczyzn.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Analiza opisowa danych survey z pakietu MASS dla cech jakościowych}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Wybierzmy teraz dwie cechy jakościowe -- \verb+W.Hnd+ oraz \verb+Clap+. Poniżej znajduje się tabela liczności i częstości dla \verb+W.Hnd+.
+
+
+<<kolejny_kod_3324, echo=FALSE, EVAL=TRUE, warning=FALSE, message=FALSE, results='asis'>>=
+W.Hnd.tabela.licznosci <- table(W.Hnd)
+W.Hnd.tabela.czestosci <- prop.table(W.Hnd.tabela.licznosci)
+a <- merge(W.Hnd.tabela.licznosci,W.Hnd.tabela.czestosci, by=1)
+colnames(a)[2] <- "Liczność"
+colnames(a)[3] <- "Częstość"
+print(a %>%
+  kable(caption = "Tabela liczności i częstości W.Hnd", position='h') %>%
+  kable_styling(),table.placement="H")
+@
+
+Widzimy, że około 92,37$\%$ badanych osób to osoby praworęczne, a tylko 18 spośród wszystkich badanych deklaruje leworęczność.
+Przygotujemy analogiczną tabelę dla \verb+Clap+.
+
+<<kolejny_kod_253, echo=FALSE, EVAL=TRUE, warning=FALSE, message=FALSE, results='asis'>>=
+
+Clap.tabela.licznosci <- table(Clap)
+Clap.tabela.czestosci <- prop.table(Clap.tabela.licznosci)
+#Przedstawienie w jednej tabeli
+b <- merge(Clap.tabela.licznosci,Clap.tabela.czestosci, by=1)
+colnames(b)[2] <- "Liczność"
+colnames(b)[3] <- "Częstość"
+print(b %>%
+  kable(caption = "Tabela liczności i częstości Clap", position='h') %>%
+  kable_styling(),table.placement="H")
+@
+
+Możemy z niej odczytać, że około 62,29$\%$ badanych deklaruje, że podczas klaskania ,,przeważa" prawa ręka. Sprawdzimy zatem, czy występują jakieś zależności między cechami \verb+W.Hnd+ oraz \verb+Clap+. W tym celu przygotujemy tabelę wielodzielczą dla tych zmiennych.
+
+<<kolejny_kod_2512, echo=FALSE, EVAL=TRUE, warning=FALSE, message=FALSE, results='asis'>>=
+
+tab.W.Hnd.Clap <- table(W.Hnd, Clap)
+tab.freq.1 <- prop.table(tab.W.Hnd.Clap)
+tab.freq.1 <- tab.freq.1 %>%
+  kable(caption = "Tabela wielodzielcza W.Hnd i Clap", position='h') %>%
+  kable_styling()
+tab.freq.1 <- add_header_above(tab.freq.1,c("W.Hnd","Clap"=3))
+print(tab.freq.1)
+@
+
+Widzimy, że 60,85$\%$ ankietowanych deklaruje prawą rękę jako tą dominującą i ,,klaszczącą", natomiast zaledwie 3,82$\%$ deklaruje taką kombinację dla lewej ręki. Można wstępnie dostrzec zależność, że osoby praworęczne częściej używają prawej dłoni do klaskania, natomiast osoby leworęczne lewej dłoni.
+
+Analogiczną tabelę przygotujemy dla zmiennych \verb+Sex+ oraz \verb+Exer+.
+
+<<kolejny_kod_25122, echo=FALSE, EVAL=TRUE, warning=FALSE, message=FALSE, results='asis'>>=
+
+tab.Sex.Exer <- table(Sex, Exer)
+tab.freq.2 <- prop.table(tab.Sex.Exer)
+tab.freq.2 <- tab.freq.2 %>%
+  kable(caption = "Tabela wielodzielcza Sex i Exer", position='h') %>%
+  kable_styling()
+tab.freq.2 <- add_header_above(tab.freq.2,c("Sex","Exer"=3))
+print(tab.freq.2)
+detach(survey)
+@
+
+Widzimy, że odsetek osób niećwiczących w obu grupach jest zbliżony i wynosi około 5$\%$, natomiast ,,systematyczne" ćwiczenia deklaruje o około 7 pkt. procentowych więcej mężczyzn niż kobiet. Nie widać zatem zależności między płcią a wykonywaniem jakichkolwiek ćwiczeń, ale mężczyźni przeważają wśród osób ćwiczących ,,często", a kobiety wśród osób ćwiczących ,,trochę".
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Badanie odporności miar położenia i rozproszenia na obserwacje odstające}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Zajmiemy się teraz sprawdzeniem, jak odpowiednie miary położenia i rozproszenia zachowują się, gdy w danych występują obserwacje odstające. Najpierw wczytujemy dane do \verb+R+, zapisując je jako wektor \verb+t+. Definiujemy funkcję \verb+sr.ucinana+, obliczającą średnią ucinaną oraz funkcję \verb+my.summary.cut+, która wyświetla w tabeli wybrane wskaźniki rozproszenia i położenia.
+
+<<kolejny_kod_23134, echo=TRUE, EVAL=TRUE, warning=FALSE, message=FALSE, results='asis'>>=
+#Wczytanie danych do R
+t <- c(6.5, 5, 6, 4, 7, 7, 5.5, 7.5)
+#Definicja funkcji obliczającej średnią ucinaną
+sr.ucinana <- function(x,k=1)
+{
+  x. <- sort(x)
+  len.x <- length(x)
+  if(k <= len.x/2){
+    return(mean(x.[k:(len.x - k)]))
+  } else{
+    return("Za duża wartość k.")
+  }
+}
+#Definicja funkcji wyświetlającą odpowiednie wskaźniki w tabeli
+my.summary.cut <- function(x)
+{
+  wskazniki <- c(Średnia=mean(x,na.rm=T), Śr.ucinana=sr.ucinana(x),
+                  IQR=IQR(x,na.rm=T), Mediana=median(x,na.rm=T), 
+                  Odch.stand.=sd(x,na.rm=T), Wariancja=var(x),
+                  Rozstęp=max(x,na.rm=T)-min(x,na.rm=T))
+  return(t(wskazniki))
+}
+@
+
+Używamy teraz wyżej zdefiniowanych funkcji i otrzymujemy następujące wyniki.
+
+<<kolejny_kod_231234, echo=FALSE, EVAL=TRUE, warning=FALSE, message=FALSE, results='asis'>>=
+sum.a <- my.summary.cut(t)
+sum.a <- sum.a %>%
+  kable(caption = "Podstawowe wskaźniki dla $t$", position='h') %>%
+  kable_styling()
+print(sum.a)
+@
+
+Zdefiniujemy wektor $t'$, zamieniając w wektorze $t$ wartość $7.5$ na $10$.
+<<kolejny_kod_23123244, echo=FALSE, EVAL=TRUE, warning=FALSE, message=FALSE, results='asis'>>=
+t. <- c(6.5, 5, 6, 4, 7, 7, 5.5, 10)
+sum.b <- my.summary.cut(t.)
+sum.b <- sum.b %>%
+  kable(caption = "Podstawowe wskaźniki dla $t'$ ", position='h') %>%
+  kable_styling()
+print(sum.b)
+@
+
+Wnioskujemy stąd, że najbardziej odporne na odchylenia wskaźniki to \verb+średnia ucinana+, \verb+rozstęp międzykwartylowy+ oraz \verb+mediana+. Niską odporność wykazują m.in. \verb+średnia+, \verb+rozstęp+ i \verb+wariancja+.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Zdefiniowanie i zastosowanie współczynnika zmienności w porównaniu dwóch cech}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Współczynnik zmienności jest definiowany jako
+\begin{equation}
+V=\frac{S}{\bar{X}}\cdot 100 \%, \indent\mathrm{(gdy} \bar{X} \neq 0\text{)}, 
+\end{equation}
+gdzie $S$ to odchylenie standardowe z próby, a $\bar{X}$ to średnia próbkowa.
+
+Zdefiniujemy funkcję \verb+CV+, która dla wektora $X=(X_1,X_2,\ldots,X_n)$ wylicza współczynnik zmienności.
+
+<<kolejny_kod_2312323244, echo=TRUE, EVAL=TRUE, warning=FALSE, message=FALSE, results='asis'>>=
+cv <- function(x)
+{
+  S <- sd(x)
+  X. <- mean(x)
+  if(X. == 0){
+    return("Błąd. Średnia próbkowa jest równa zero.")
+  } else {
+    return(S/X.*100)
+  }
+}
+@
+
+Następnie wprwadzamy do \verb+R+ dane przedstawiające wzrost oraz wagę w pewnej grupie uczniów.
+
+<<kolejny_kod_23123232442, echo=TRUE, EVAL=TRUE, warning=FALSE, message=FALSE, results='asis'>>=
+dane <- data.frame(wzrost = c(151, 160, 162, 155, 154,
+                              168, 153, 158, 157, 150, 167),
+                   waga = c(61, 69, 73, 65, 64, 78, 
+                            63, 68, 67, 60, 77))
+@
+
+Wykorzystując funkcję \verb+CV+ oraz \verb+sd+ obliczamy współczynnik zmienności oraz odchylenie standardowe dla cech \verb+waga+ oraz \verb+wzrost.
+
+<<kolejny_kod_23422323244, echo=FALSE, EVAL=TRUE, warning=FALSE, message=FALSE, results='asis'>>=
+attach(dane)
+rows <- c(cv(wzrost),sd(wzrost),cv(waga),sd(waga))
+rows <- t(rows) %>%
+  kable(caption = "CV oraz sd dla wzrostu i wagi", position='h') %>%
+  kable_styling()
+rows <- add_header_above(rows,c("CV.wzrost","sd.wzrost","CV.waga","sd.waga"))
+print(rows)
+@
+
+Ponieważ współczynnik zmienności zmiennej \verb+waga+ jest wyższy, możemy stwierdzić, że charakteryzuje się ona większą zmiennością niż \verb+wzrost+. Natomiast różnica odchyleń standardowych obu zmiennych jest zbyt mała, aby spoglądając tylko na nią uzyskać taki sam wniosek.  
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Podsumowanie}
+Poniżej wypunktujemy najważniejsze wnioski, jakie można wyciągnąć z przeprowadzanych analiz:
+\begin{itemize}
+\item wyznaczenie podstawowych wskaźników sumarycznych przy podziale na grupy pozwala nam dostrzec różnice w tych grupach i wysnuć wstępne wnioski,
+\item wykononanie tabeli wielodzielczej dla dwóch zmiennych jakościowych pozwala nam na porównanie częstości występowania pewnych kombinacji oraz zaobserwowanie ewentualnych zależności między zmiennymi,
+\item średnia ucinana, rozstęp międzykwartylowy oraz mediana to wskaźniki odporne na obserwacje odstające, natomiast średnia próbkowa, rozstęp oraz wariancja są na nie bardzo podatne,
+\item współczynnik zmienności pozwala lepiej określić zmienność cechy niż odchylenie standardowe.
+\end{itemize}
+
+
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\end{document}

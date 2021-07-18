@@ -1,0 +1,443 @@
+\documentclass[12pt, a4paper]{article}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% dodatkowe pakiety LaTeX'a
+\usepackage[OT4]{polski}
+\usepackage[utf8]{inputenc}
+\usepackage[top=2.5cm, bottom=2.5cm, left=2cm, right=2cm]{geometry}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage[colorlinks=true, linkcolor=blue]{hyperref}
+\usepackage{bbm}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ustawienia globalne
+<<ustawienia_globalne, echo=FALSE, warning=FALSE, message=FALSE>>=
+library(cluster)
+library(knitr)
+library(kableExtra)
+library(dplyr)
+library(ggplot2)
+library(grid)
+library(gridExtra)
+library(ggpubr)
+library(arules)
+library(reshape2)
+library(xtable) #pakiet do tworzenia tabel w formacie LaTeX'a
+library(RColorBrewer)
+library("car")
+library(MASS)
+library(rlist)
+library(purrr)
+library(tidyr)
+library(GGally)    # grafika ggplot
+library(corrplot)  # funkcja corrplot
+library(ggfortify) # funkcja autoplot
+library(plotly) #grafika 3D
+library(webshot) #użycie grafiki z plotly w .pdf
+
+opts_chunk$set(fig.path='figure/', fig.align='center', fig.pos='H',fig.width=7, fig.height=4)
+
+# UWAGA: w razie potrzeby można zmieniać te ustawienia w danym chunk'u!
+@
+
+
+\begin{document}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% strona tytulowa
+\title{Sprawozdanie 3}
+\author{Jakub Markowiak \\ album 255705}
+\maketitle
+\tableofcontents
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Krótki opis zagadnienia}
+
+W tym sprawozdaniu zajmiemy się badaniem własności modeli regresji liniowej. Najpierw przygotujemy prosty model regresji liniowej dla odpowiednich danych i spróbujemy wykorzystać go do prognozowania przyszłych wartości. Następnie dla danych \verb+Cars.93+ sporządzimy modele regresji liniowej dla jednej, dwóch i trzech zmiennych objaśniających, a następnie spróbujemy wyłonić ten najlepiej dopasowany.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Opis eksperymentów/analiz}
+
+Przeprowadzimy następujące analizy i eksperymenty:
+\begin{enumerate}
+  \item Badanie własności prostego modelu regresji liniowej,
+  \item Porównanie modeli regresji liniowej dla danych \verb+Cars.93+.
+\end{enumerate}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Wyniki}
+\subsection{Badanie własności prostego modelu regresji liniowej}
+
+Rozpoczynamy od wczytania zadanych danych. ($x$ - wydatki na reklamę, $y$ - wielkość sprzedaży), a następnie rysujemy wykres rozrzutu w celu scharakteryzowania zależności między wydatkami na reklamę i wielkością sprzedaży.
+
+<<A1, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Wykres rozrzutu dla wczytanych danych">>=
+
+df <- data.frame(
+  x = c(12.5, 3.7, 21.6, 60, 37.6, 6.1, 16.8, 41.2, 50, 31),
+  y = c(148, 55, 338, 994, 541, 89, 126, 379, 550, 400)
+)
+
+tab <- xtable(t(df), caption = "Wczytane dane")
+print(tab, type = "latex", table.placement = "H", include.rownames=TRUE, row.names = TRUE, col.names = FALSE, sanitize.text.function=function(x){x})
+
+df <- df[order(df$x),]
+
+x = df$x
+y = df$y
+
+attach(df)
+cor <- cor(x,y)
+
+
+ggplot(df,aes(x,y)) +
+  geom_point()  +
+  annotate("text", x=17, y=1000, color="blue", label= paste("Współczynnik korelacji:", as.character(cor))) +
+  ggtitle("Wykres rozrzutu")
+@
+
+Ponieważ współczynnik korelacji jest bardzo blisko $1$, a także na podstawie rozmieszczenia punktów na wykresie rozrzutu, możemy wyciągnąć wniosek, że zależność między tymi zmiennymi ma charakter liniowy.
+
+Napiszemy teraz funkcję \verb+mnk+, która wyznaczy paramtery $\beta_0$ i $\beta_1$, wykorzystując metodę najmniejszych kwadratów.
+
+<<A2, echo=TRUE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Dane">>=
+mnk <- function(x,y){
+  x_sr <- mean(x)
+  y_sr <- mean(y)
+  n <- length(x)
+  s1 <- 0
+  s2 <- 0
+  for (i in c(1:n)) {
+    s1 <- s1 + (x[i] - x_sr) * (y[i] - y_sr)
+    s2 <- s2 + (x[i] - x_sr)^2
+  }
+  beta_1 <- s1/s2
+  beta_0 <- y_sr - beta_1*x_sr
+  return(c(beta_0,beta_1))
+}
+@
+
+Korzystając z funkcji \verb+mnk+ otrzymujemy prostą regresji dla naszych danych:
+
+<<A3, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Dopasowana prosta regresji">>=
+beta <- mnk(x,y)
+beta_0 <- beta[1]
+beta_1 <- beta[2]
+
+model.1 <- function(x) beta_0 + beta_1 * x
+ggplot(df,aes(x,y)) +
+  geom_point()  +
+  stat_function(fun=model.1, color="red") +
+  ggtitle("Dopasowana prosta regresji")
+
+#Porównanie z funkcją lm()
+#ggplot(df, aes(x,y)) + 
+#  geom_point() +
+#  stat_smooth(method = "lm", col = "red") +
+#  stat_function(fun=function(x) beta_0 + beta_1 * x, color="green")
+@
+
+Sprawdzimy teraz, jakie własności mają reszty w naszym modelu. W tym celu sporządzimy wykres Normal Q--Q oraz wyznaczymy współczynnik determinacji.
+
+<<A4, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Badanie własności reszt">>=
+model <- function(x) beta_0 + beta_1*x
+model.lm <- lm(y~x)
+#Współczynnik determinacji:
+wd <- summary(model.lm)$r.squared 
+e <- y - model(x)
+
+qqPlot(e, id=FALSE, main="Normal Q-Q")
+#Można założyć, że reszty mają rozkład normalny
+@
+
+Możemy założyć, że wektor reszt $\epsilon$ ma rozkład normalny. Współczynnik determinacji wynosi \Sexpr{wd}, zatem jest dość blisko $1$. Stąd wnioskujemy, że uzyskany model jest dobrze dopasowany.
+
+Korzystając z uzyskanego modelu, spróbujemy wyznaczyć prognozowaną wielkość sprzedaży dla nakładów $35$, $45$ i $55$ [mln.$\mathdollar$].
+
+<<A5, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Dane">>=
+x.predict <- c(35,45,55)
+y.predict <- model(x.predict)
+
+#Tabela
+df.predict <- data.frame(x.predict, y.predict)
+colnames(df.predict) <- c("Nakład [mln.$]", "Progn. wielk. sprz.")
+tab <- xtable(df.predict, caption = "Prognozowana wielkość sprzedaży")
+print(tab, type = "latex", table.placement = "H", include.rownames=FALSE, row.names = FALSE)
+@
+
+Teraz wyznaczymy przedziały ufności oraz przedziały predykcji dla otrzymanych wyników.
+
+<<A6, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Dane">>=
+new.dat <- data.frame(x=x.predict)
+#przedział ufności dla 95% i 99%
+conf_int95 <- predict(model.lm, newdata = new.dat, interval = 'confidence', level=0.95)
+pred_int95 <- predict(model.lm, newdata = new.dat, interval = 'prediction', level=0.95)
+
+conf_int99 <- predict(model.lm, newdata = new.dat, interval = 'confidence', level=0.99)
+pred_int99 <- predict(model.lm, newdata = new.dat, interval = 'prediction', level=0.99)
+#Tabela dla 95%
+df.predict <- data.frame(x.predict, y.predict)
+colnames(df.predict) <- c("Nakład [mln.$]", "Progn. wielk. sprz.")
+
+df.predict$conf.lwr <- conf_int95[,2]
+df.predict$conf.upr <- conf_int95[,3]
+
+df.predict$pred.lwr <- pred_int95[,2]
+df.predict$pred.upr <- pred_int95[,3]
+
+tab <- xtable(df.predict, caption = "Przedziały ufnosci i predykcji - 0.95")
+print(tab, type = "latex", table.placement = "H", include.rownames=FALSE, row.names = FALSE)
+
+#dla nakładu 35
+pred.lwr <- round(df.predict$pred.lwr[1],2)
+pred.upr <- round(df.predict$pred.upr[1],2)
+@
+
+Odczytujemy, że np. przy nakładzie $35$,  z $95\%$ prawdopodobieństwem wielkość sprzedaży będzie w przedziale $\left[\Sexpr{pred.lwr}, \Sexpr{pred.upr}\right]$.
+
+<<A7, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Dane">>=
+
+#Tabela dla 99%
+df.predict <- data.frame(x.predict, y.predict)
+colnames(df.predict) <- c("Nakład [mln.$]", "Progn. wielk. sprz.")
+
+df.predict$conf.lwr <- conf_int99[,2]
+df.predict$conf.upr <- conf_int99[,3]
+
+df.predict$pred.lwr <- pred_int99[,2]
+df.predict$pred.upr <- pred_int99[,3]
+
+tab <- xtable(df.predict, caption = "Przedziały ufnosci i predykcji - 0.99")
+print(tab, type = "latex", table.placement = "H", include.rownames=FALSE, row.names = FALSE)
+
+pred.lwr <- round(df.predict$pred.lwr[1],2)
+pred.upr <- round(df.predict$pred.upr[1],2)
+@
+
+Analogicznie odczytujemy, że np. przy nakładzie $35$,  z $99\%$ prawdopodobieństwem wielkość sprzedaży będzie w przedziale $\left[\Sexpr{pred.lwr}, \Sexpr{pred.upr}\right]$. 
+
+Znajdziemy teraz model regresji liniowej korzystając z metody najmniejszych ważonych kwadratów.
+
+<<A8, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Porównanie MNK i MWNK">>=
+model.lm.2 <- lm(y~x, weights=x)
+beta <- model.lm.2$coefficients
+beta_0. <- beta[1]
+beta_1. <- beta[2]
+model.2 <- function(x) beta_0. + beta_1. * x
+
+ggplot(df,aes(x,y)) +
+  geom_point()  +
+  stat_function(aes(colour = "MWNK"), fun=model.2) +
+  stat_function(aes(colour = "MNK"), fun=model.1) +
+  theme(legend.position = "bottom", plot.title = element_text(size=10)) +
+  scale_colour_manual("Wykresy", values = c("blue", "red")) +
+  ggtitle("Metoda ważonych najmniejszych kwadratów vs Metoda najmniejszych kwadratów")
+
+wd.2 <- summary(model.lm.2)$r.squared 
+e.2 <- y - model.2(x)
+
+sd.1 <- summary(model.lm)$coefficients[1,2]
+sd.2 <- summary(model.lm.2)$coefficients[1,2]
+
+df.tab <- data.frame(x=c(wd,wd.2),y=c(sd.1,sd.2))
+rownames(df.tab) <- c("MNK", "MWNK")
+colnames(df.tab) <- c("$R^2$", "$\\sigma$")
+
+tab <- xtable(df.tab, caption = "Porównanie MNK i MWNK")
+print(tab, type = "latex", table.placement = "H", include.rownames=TRUE, row.names = TRUE, sanitize.text.function=function(x){x})
+detach(df)
+@
+
+Obserwujemy, że krzywa uzyskana metodą ważonych najmniejszych kwadratów ma wyższy współczynnik $\beta_1$. Poza tym model uzyskany tą metodą charakteryzuje się niższym współczynnikiem determinacji oraz wyższym odchyleniem standardowym.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Porównanie modeli regresji liniowej dla danych Cars.93}
+Wczytujemy dane \verb+Cars93+ z pakietu \verb+MASS+. Zbadamy zależności zmiennej \verb+Price+ od pozostałych cech (pomijamy cechy \verb+Min.Price+ i \verb+Max.Price+, gdyż ta zależność jest oczywista). W tym celu przygotujemy wykresy rozrzutu dla cech ilościowych (typ \verb+numeric+ lub \verb+integer+).
+
+<<B1, echo=FALSE, eval=TRUE, results='asis', message=FALSE, warning=FALSE, fig.height=6, fig.cap="Dane">>=
+data(Cars93)
+df <- as.data.frame(Cars93)
+attach(df)
+df.m <- df %>%
+  discard(is.factor)
+
+df.m %>%
+  gather(-Price, -Min.Price, -Max.Price, key = "var", value = "value") %>% 
+  ggplot(aes(x = value, y = Price,)) +
+    geom_point() +
+    facet_wrap(~ var, scales = "free", ncol=5, nrow=3) +
+    theme_bw()
+@
+
+Widzimy, że dla zmiennej \verb+Price+ zależność zbliżona do liniowej występuje m.in. w przypadku \verb+Horsepower+, \verb+EngineSize+, \verb+Fuel.tank.capacity+, \verb+MPG.City+, \verb+MPG.Highway+, \verb+Weight+ oraz \verb+Wheelbase+. Sporządzimy teraz macierz korelacji, aby sprawdzić zasadność naszych obserwacji. Umieścimy też w tabeli te zmienne, dla których $\left|\textrm{współczynnik korelacji}\right| \geq 0.6$ (względem zmiennej \verb+Price+).
+
+<<B2, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height=6, fig.cap="Macierz korelacji">>=
+df.m <- na.omit(df.m)
+df.tab <- as.data.frame(cor(df.m))
+df.tab <- subset(df.tab[2], abs(Price) >= 0.6)
+
+ggcorr(df.m,label = TRUE)
+
+tab <- xtable(df.tab, caption = "Korelacja między Price i pozostałymi zmiennymi (korelacja $\\geq 0.6$)")
+print(tab, type = "latex", table.placement = "H", include.rownames=TRUE, row.names = TRUE)
+@
+
+Przygotujemy teraz modele regresji liniowej dla wybranych trzech cech - będą to \verb+Horsepower+, \verb+EngineSize+ oraz \verb+Wheelbase+. Rozpoczniemy od prostego modelu dla zmiennej \verb+Horsepower+. 
+
+<<B3, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.cap="Model regresji dla 1 zm. objaśniającej">>=
+# Informacje o modelach
+# 1 zmienna objaśniająca
+model.1 <- lm(Price~Horsepower, data = Cars93)
+model.summary.1 <- summary(model.1)
+rsqr.1 <- model.summary.1$adj.r.squared
+sigma.1 <- model.summary.1$sigma
+rsds.1 <- residuals(model.1)
+
+ggplot(Cars93, aes(x = Horsepower, y = Price)) + 
+  geom_point() +
+  stat_smooth(method = "lm", col = "red", se=FALSE)+
+  ggtitle("Dopasowana prosta regresji")
+
+x.0 <- round(model.1$coefficients[1],4)
+x.1 <- round(model.1$coefficients[2],4)
+@
+
+Model regresji dla $1$ zmiennej objaśniającej (\verb+Horsepower+) jest w przybliżeniu w postaci
+
+\begin{equation}
+\mathbf{Y}_i = \Sexpr{x.0} + \Sexpr{x.1}x_i + \epsilon_i
+\end{equation}
+
+
+<<B4, echo=FALSE, fig=FALSE, eval=TRUE, results='asis', message=FALSE>>=
+
+# 2 zmienne objaśniające
+model.2 <- lm(Price ~ Horsepower + EngineSize, data = Cars93) 
+model.summary.2 <- summary(model.2)
+rsqr.2 <- model.summary.2$adj.r.squared
+sigma.2 <- model.summary.2$sigma
+rsds.2 <- residuals(model.2)
+
+graph_reso <- 0.5
+
+axis_x <- seq(min(df.m$Horsepower), max(df.m$Horsepower), by = graph_reso)
+axis_y <- seq(min(df.m$EngineSize), max(df.m$EngineSize), by = graph_reso)
+
+price_lm_surface <- expand.grid(Horsepower = axis_x, EngineSize = axis_y,KEEP.OUT.ATTRS = F)
+price_lm_surface$Price <- predict.lm(model.2, newdata = price_lm_surface)
+price_lm_surface <- acast(price_lm_surface, EngineSize ~ Horsepower, value.var = "Price")
+
+dplot <-
+  plot_ly(
+    data = df.m,
+    z = ~ Price,
+    x = ~ Horsepower,
+    y = ~ EngineSize,
+    type = "scatter3d", 
+    mode = "markers",
+    opacity = 0.5,
+    color = "black"
+  )
+
+dplot <- add_trace(p = dplot,
+                       z = price_lm_surface,
+                       x = axis_x,
+                       y = axis_y,
+                       type = "surface",
+                   color = "blue")
+#dplot
+
+x.0 <- round(model.2$coefficients[1],4)
+x.1 <- round(model.2$coefficients[2],4)
+x.2 <- round(model.2$coefficients[3],4)
+@
+Model regresji dla $2$ zmiennych objaśniających (\verb+Horsepower+, \verb+EngineSize+) jest w przybliżeniu w postaci
+
+\begin{equation}
+\mathbf{Y}_i = \Sexpr{x.0} + \Sexpr{x.1}x_{i,1} + \Sexpr{x.2}x_{i,2} + \epsilon_i
+\end{equation}
+
+Jest to równanie płaszczyzny. Możemy ją zwizualizować na wykresie.
+
+\begin {figure}[H]
+{\centering \includegraphics[width=\maxwidth]{figure/dplot} 
+\caption[Model regresji dla 2 zm. objaśniających]{Model regresji dla 2 zm. objaśniających}\label{fig:dplot}}
+\end {figure}
+
+
+<<B5, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.cap="Model regresji dla 3 zm. objaśniających">>=
+# 3 zmienne objaśniające
+model.3 <- lm(Price ~ Horsepower + EngineSize + Wheelbase, data = Cars93) 
+model.summary.3 <- summary(model.3)
+rsqr.3 <- model.summary.3$adj.r.squared
+sigma.3 <- model.summary.3$sigma
+rsds.3 <- residuals(model.3)
+
+x.0 <- round(model.3$coefficients[1],4)
+x.1 <- round(model.3$coefficients[2],4)
+x.2 <- round(model.3$coefficients[3],4)
+x.3 <- round(model.3$coefficients[4],4)
+
+@
+
+Model regresji dla $3$ zmiennych objaśniających (\verb+Horsepower+, \verb+EngineSize+, \verb+Wheelbase+) jest w przybliżeniu w postaci
+
+\begin{equation}
+\mathbf{Y}_i = \Sexpr{x.0} + \Sexpr{x.1}x_{i,1} \Sexpr{x.2}x_{i,2} + \Sexpr{x.3}x_{i,3} + \epsilon_i
+\end{equation}
+
+Spróbujemy teraz przeanalizować, który z tych trzech modeli jest najlepiej dopasowany. W tym celu sporządzimy wykresy, które pomogą nam zweryfikować poprawność dopasowania dla kolejnych modeli.
+
+<<B6, echo=FALSE, eval=TRUE, results='asis', warning=FALSE, message=FALSE, fig.cap="Autoplots">>=
+# 3 zmienne objaśniające
+p1 <- autoplot(model.1)
+
+p2 <- autoplot(model.2)
+
+p3 <- autoplot(model.3)
+@
+
+
+<<B7, echo=FALSE, eval=TRUE, results='asis', warning=FALSE, message=FALSE, fig.cap="Weryfikacja poprawności dopasowania dla modelu 1">>=
+# 3 zmienne objaśniające
+p1
+@
+
+
+<<B8, echo=FALSE, eval=TRUE, results='asis',warning=FALSE, message=FALSE, fig.cap="Weryfikacja poprawności dopasowania dla modelu 2">>=
+# 3 zmienne objaśniające
+p2
+@
+
+
+<<B9, echo=FALSE, eval=TRUE, results='asis',warning=FALSE, message=FALSE, fig.cap="Weryfikacja poprawności dopasowania dla modelu 3">>=
+# 3 zmienne objaśniające
+p3
+
+
+# Porównanie rsqr i sigma
+df.tab <- data.frame(x=c(rsqr.1,rsqr.2,rsqr.3),
+                     y=c(sigma.1,sigma.2,sigma.3))
+colnames(df.tab) <- c("R^2", "$\\sigma$")
+rownames(df.tab) <- c("Model 1", "Model 2", "Model 3")
+
+tab <- xtable(df.tab, caption = "Współczynnik adjusted R$^2$ i odchylenie standardowe $\\sigma$")
+print(tab, type = "latex", table.placement = "H", include.rownames=TRUE, row.names = TRUE, sanitize.text.function=function(x){x})
+@
+
+Porównując wykresy Residuals vs Fitted oraz wykresy Normal Q--Q ciężko wyciągnąć jakieś wnioski. Na wykresie Scale--Location widać natomiast, że najbliżej poziomej linii jest krzywa w modelu $3$. Także na wykresie Residuals vs Leverage delikatnie lepiej wypada model $3$. Porównując współczynniki R$^2$ oraz $\sigma$ również możemy wyciągnąć wniosek, że najlepiej dopasowanym modelem jest model $3$, natomiast różnice nie są bardzo wyraźne.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Podsumowanie}
+Poniżej wypunktujemy najważniejsze wnioski, jakie można wyciągnąć z przeprowadzanych analiz:
+\begin{itemize}
+\item dobrze dopasowany model regresji liniowej pozwala nam na prognozowanie przyszłych wartości z zadanym prawdopodobieństwem,
+\item porównując wskaźniki adjusted R$^2$ oraz odchylenie standardowe $\sigma$ możemy sprawdzać, jak dobrze dany model jest dopasowany do danych,
+\item porównanie wykresów Residuals vs Fitted, Normal Q--Q, Scale--Location oraz Residuals vs Leverage pozwala nam wyłonić najlepiej dopasowany model.
+\end{itemize}
+
+
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\end{document}
+

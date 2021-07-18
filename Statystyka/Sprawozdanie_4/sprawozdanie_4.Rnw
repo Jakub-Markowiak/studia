@@ -1,0 +1,380 @@
+\documentclass[12pt, a4paper]{article}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% dodatkowe pakiety LaTeX'a
+\usepackage[OT4]{polski}
+\usepackage[utf8]{inputenc}
+\usepackage[top=2.5cm, bottom=2.5cm, left=2cm, right=2cm]{geometry}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage[colorlinks=true, linkcolor=blue]{hyperref}
+\usepackage{bbm}
+\usepackage{amsmath}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ustawienia globalne
+<<ustawienia_globalne, echo=FALSE, warning=FALSE, message=FALSE>>=
+library(cluster)
+library(knitr)
+library(kableExtra)
+library(dplyr)
+library(ggplot2)
+library(grid)
+library(gridExtra)
+library(ggpubr)
+library(arules)
+library(reshape2)
+library(xtable) #pakiet do tworzenia tabel w formacie LaTeX'a
+library(RColorBrewer)
+library(ggrepel)
+library(factoextra)
+library(corrplot)
+library(seriation)
+library(rgl)
+library(ggalt)
+library(cowplot)
+library(magick)
+library(rlist)
+
+opts_chunk$set(fig.path='figure/', fig.align='center', fig.pos='H',fig.width=7, fig.height=4)
+
+# UWAGA: w razie potrzeby można zmieniać te ustawienia w danym chunk'u!
+@
+
+\begin{document}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% strona tytulowa
+\title{Sprawozdanie 4}
+\author{Jakub Markowiak \\ album 255705}
+\maketitle
+\tableofcontents
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Krótki opis zagadnienia}
+
+W tym sprawozdaniu zbadamy własności rozkładu $\mathca{G}(a,s)$ oraz, korzystając z metody momentów oraz metody największej wiarygodności, wyznaczymy estymatory parametrów a oraz s a następnie porównamy je i spróbujemy rozstrzygnąć, który jest lepszy. Przeprowadzimy również doświadczalną analizę stabilności estymatora NW.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Opis eksperymentów/analiz}
+
+Przeprowadzimy następujące analizy i eksperymenty:
+\begin{enumerate}
+  \item Porównanie estymatorów MM i NW dla rozkładu Gamma,
+  \item badanie stabilności estymatora NW.
+\end{enumerate}
+
+
+\section{Wyniki}
+\subsection{Porównanie estymatorów MW i MNW dla rozkładu Gamma}
+
+W tym sprawozdaniu rozpatrujemy rozkład $\mathcal{G}(a,s)$, gdzie a -- parametr kształtu, a s -- parametr skali. Sprawdźmy, jak wyglądają wykresy gęstości w zależności od dobrania tych parametrów.
+
+
+<<A1, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height=8, fig.cap="Rozkład Gamma dla różnych wartości parametrów a i s">>=
+A <- c(0.2, 0.8, 1, 3, 5)
+S <- c(0.5,2,5)
+
+L <- list()
+for (a in A){
+  for (s in S){
+    p <- ggplot(data = data.frame(x = c(0, 40)), aes(x)) +
+    stat_function(fun = dgamma, n = 101, args = list(scale = s, shape = a), color= "black", size=0.9) + 
+    geom_area(stat = "function", fun = dgamma, args = list(scale = s, shape = a), fill = "lightgreen", alpha=0.5, xlim = c(0, 40)) +
+    ylab("") +
+    scale_y_continuous(breaks = NULL) +
+    ggtitle(paste("a =",a,", s =",s))
+    L <- list.append(L, p)
+  }
+}
+
+figure <- ggarrange(plotlist=L, ncol=3, nrow=5)
+annotate_figure(figure,
+               top = text_grob("Gęstośc rozkładu Gamma dla różnych a i s", color = "black", face = "bold", size = 14))
+@
+
+Możemy zaobserwować, że im wyższa wartość parametru s, tym bardziej spłaszczony jest wykres. Dla parametru a widzimy natomiast, że wraz z jego wzrostem maleje skośność wykresu i staje się on bardziej wygładzony. Dla a $\leq 1$ obserwujemy, że wykres gęstości osiąga maksimum w zerze, natomiast dla a $ > 1$ maksimum jest poza zerem.
+
+Wyznaczymy teraz analityczną postać estymatorów uzyskanych metodą momentów. Wiemy, że jeżeli $\mathbf{X}$ ma rozkład $\mathcal{G}(a,s)$ to
+
+\begin{align*}
+  E(\mathbf{X}) &= sa, \\
+  E(\mathbf{X^2}) &= s^a(1+a).
+\end{align*}
+
+Przyrównujemy zatem momenty zwykłe do momentów teoretycznych i otrzymujemy układ równań:
+
+\begin{align*}
+  \frac{1}{n}\sum_{i=1}^{n}X_i &= a s, \\
+  \frac{1}{n^2}\sum_{i=1}^{n}X_i^2 &= a s^2 +a^2 s^2.
+\end{align*}
+
+Rozwiązując ten układ otrzymujemy estymatory MM w postaci:
+\begin{align*}
+\hat{a}_{MM} &= \frac{\bar{X}^2}{\frac{1}{n}\sum_{i=1}^{n}{X_i^2}-\bar{X}^2},\\
+\hat{s}_{MM} &= \frac{\frac{1}{n}\sum_{i=1}^{n} X_i^2 - \bar{X}^2}{\bar{X}}.
+\end{align*}
+
+Napiszemy teraz R-funkcję, która dla zadanej próby zwróci wartości tych estymatorów.
+
+<<A2, echo=TRUE, eval=TRUE, results='asis', message=FALSE>>=
+gamma_MM <- function(X) {
+  n <- length(X)
+  X_hat <- mean(X)
+  X_sq <- sum(X ^ 2)
+  a_hat <- X_hat ^ 2 / (1 / n * X_sq - X_hat ^ 2)
+  s_hat <- (1 / n * X_sq - X_hat ^ 2) / X_hat
+  return(c(a_hat,s_hat))
+}
+@
+
+Analogicznie Wyznaczymy analityczną postać estymatorów uzyskanych metodą największej wiarygodności:
+
+\begin{align*}
+p_\theta(\mathbf{X})  &= \prod_{i=1}^{n}\frac{X_i^{(a-1)}}{s^a \Gamma(a)}\exp{\left(\frac{-X_i}{s}\right)}\mathds{1}_{[0,\infty)}{(X_i)} =\\
+                      &= \mathds{1}_{[0,\infty)}{(X_{n:n})} \left(\frac{1}{s^a \Gamma{(a)}}\right)^n \prod_{i=1}^{n} \exp{\left(\frac{-X_i}{s}\right)}.
+\end{align*}
+
+Badamy logarytm gęstości
+
+\begin{align*}
+l_\theta(\mathbf{X})  &= \ln{\mathds{1}_{[0,\infty)}{(X_{n:n})}} + n\left(-a\ln{s}-\ln{\Gamma{(a)}}\right) + \left(a-1\right) \sum_{i=1}^{n}\ln{X_i} - \frac{\sum_{i=1}^{n}X_i}{s}.
+\end{align*}
+
+Szukamy maksimum funkcji $l_\theta$, zatem
+
+\begin{align*}
+    \left\{
+    \begin{array}{ll}
+      \frac{\partial l_\theta}{\partial a} &= -n \ln{s} - n\frac{\Gamma'{(a)}}{\Gamma{(a)}} + \sum_{i=1}^{n} \ln{X_i} = 0,\\
+      \frac{\partial l_\theta}{\partial s} &= -\frac{a}{s} + \frac{1}{s^2}\sum_{i=1}^n X_i = 0
+    \end{array}
+    \right.
+\end{align*}
+
+Nasze estymatory NW są rozwiązaniem układu równań
+
+\begin{align*}
+-n \ln{\frac{\sum_{i=1}^{n} X_i}{\hat{a}_{NW}}} - n\psi(\hat{a}_{NW}) + \sum_{i=1}^{n}\ln{X_i} &= 0, \\
+\hat{s}_{NW} - \hat{a}_{NW} \sum_{i=1}^{n} X_i &= 0.
+\end{align*}
+
+Ponieważ pojawia się tutaj funkcja specjalna \verb+digamma+, estymator ten można wyznaczyć tylko przy użyciu metod numerycznych. Napiszemy zatem funkcję, która rozwiąże powyższy układ równań dla zadanej próby i zwróci estymatory NW.
+
+<<A3, echo=TRUE, eval=TRUE, results='asis', message=FALSE>>=
+gamma_NW <- function(X) {
+  n <- length(X)
+  equation <- function (a, X)
+  {
+    y <-
+      -n * log(sum(X) / a) + n * log(n) - n * digamma(a) + sum(log(X))
+  }
+  a_hat <- uniroot(f = equation,
+                   interval = c(0.01, 100),
+                   X = X)$root
+  s_hat <- mean(X) / a_hat
+  return(c(a_hat, s_hat))
+}
+@
+
+Porównamy teraz estymatory uzyskane obiema metodami. Przedstawimy na wykresie różnice modułów obciążeń, wariancji oraz błędów średniokwadratowych dla obu estymatorów. Odejmujemy moduły kolejnych wartości dla estymatora MM od ich odpowiedników dla NW.
+
+<<A4, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height=10, fig.cap="Porównanie estymatorów MM i NW">>=
+
+Theta <- data.frame(a = c(0.5,0.5,1,2), s =c(1,0.5,0.5,5)) #pary a i s
+N <- c(10,25,50,75,100) #badane długości próby
+L <- list()
+
+for (m in 1:nrow(Theta)) {
+  a <- Theta[m,1]
+  s <- Theta[m,2]
+  bias.Dif.a <- c()
+  var.Dif.a <- c()
+  mse.Dif.a <- c()
+  
+  bias.Dif.s <- c()
+  var.Dif.s <- c()
+  mse.Dif.s <- c()
+  for (k in N) {
+    n <- k  
+    ile <- 10^4
+    M <- matrix(rgamma(n*ile, scale = s, shape = a), nrow=n, ncol=ile)
+  
+    ## Metoda MM
+    mm.theta.vec <- apply(M, 2, gamma_MM)
+    ## Metoda NW
+    nw.theta.vec <- apply(M, 2, gamma_NW) 
+    
+      
+    # obciazenie
+    mm.bias.a <- mean(mm.theta.vec[1,]) - a^2
+    mm.bias.s <- mean(mm.theta.vec[2,]) - s^2
+    
+    mm.bias <- c(mm.bias.a, mm.bias.s)
+    
+    nw.bias.a <- mean(nw.theta.vec[1,]) - a^2
+    nw.bias.s <- mean(nw.theta.vec[2,]) - s^2
+    
+    nw.bias <- c(nw.bias.a, nw.bias.s)
+    
+    bias.dif <- abs(nw.bias) - abs(mm.bias) #różnica między modułami obciążeń
+    
+    # wariancja
+    mm.var.a <- var(mm.theta.vec[1,])
+    mm.var.s <- var(mm.theta.vec[2,])
+    
+    mm.var <- c(mm.var.a, mm.var.s)
+    
+    nw.var.a <- var(nw.theta.vec[1,])
+    nw.var.s <- var(nw.theta.vec[2,])
+    
+    nw.var <- c(nw.var.a, nw.var.s)
+    
+    var.dif <- abs(nw.var) - abs(mm.var) #różnica między modułami wariancji
+    # MSE
+    mm.mse.a <- mm.var.a + mm.bias.a^2
+    mm.mse.s <- mm.var.s + mm.bias.s^2
+    
+    mm.mse <- c(mm.mse.a, mm.mse.s)
+    
+    nw.mse.a <- nw.var.a + nw.bias.a^2
+    nw.mse.s <- nw.var.s + nw.bias.s^2
+    
+    nw.mse <- c(nw.mse.a, nw.mse.s)
+    
+    mse.dif <- abs(nw.mse) - abs(mm.mse) #różnica między modułami błędów średniokwadratowych
+    
+    bias.Dif.a <- append(bias.Dif.a, bias.dif[1]) #dodawanie do list
+    var.Dif.a <- append(var.Dif.a, var.dif[1])
+    mse.Dif.a <- append(mse.Dif.a, mse.dif[1])
+    
+    bias.Dif.s <- append(bias.Dif.s, bias.dif[2])
+    var.Dif.s <- append(var.Dif.s, var.dif[2])
+    mse.Dif.s <- append(mse.Dif.s, mse.dif[2])
+  }
+  
+  p1 <- ggplot(data = data.frame(x = N, bias.Dif.a, bias.Dif.s), aes(x)) +
+      geom_point(aes(x=N, y=bias.Dif.a, colour = "a")) +
+      geom_point(aes(x=N, y=bias.Dif.s, colour = "s")) +
+      geom_point(aes(x=N, y=bias.Dif.a + bias.Dif.s, color = "oba")) +
+      geom_hline(yintercept = 0) +
+      xlab("n") +
+      ylab("|NW| - |MM|") +
+      ggtitle(paste("a =",a,", s =",s), paste("różn. modułów obciążeń")) +
+      theme(legend.position = "bottom") +
+      scale_colour_manual(name="Estymator",
+        values=c(a="1950", s="1940", oba="red"),
+        labels=c(a="a", s="s", oba="(a,s)"))
+  
+  p2 <- ggplot(data = data.frame(x = N, var.Dif.a, var.Dif.s), aes(x)) +
+      geom_point(aes(x=N, y=var.Dif.a, colour = "a")) +
+      geom_point(aes(x=N, y=var.Dif.s, colour = "s")) +
+      geom_point(aes(x=N, y=var.Dif.a + var.Dif.s, color = "oba")) +
+      geom_hline(yintercept = 0) +
+      xlab("n") +
+      ylab("|NW| - |MM|") +
+      ggtitle(paste("a =",a,", s =",s),paste("różn. modułów var")) +
+      theme(legend.position = "bottom") +
+      scale_colour_manual(name="Estymator",
+        values=c(a="1950", s="1940", oba="red"),
+        labels=c(a="a", s="s", oba="(a,s)"))
+  
+  p3 <- ggplot(data = data.frame(x = N, mse.Dif.a, mse.Dif.s), aes(x)) +
+      geom_point(aes(x=N, y=mse.Dif.a, color = "a")) +
+      geom_point(aes(x=N, y=mse.Dif.s, color = "s")) +
+      geom_point(aes(x=N, y=mse.Dif.a + mse.Dif.s, color = "oba")) +
+      geom_hline(yintercept = 0) +
+      xlab("n") +
+      ylab("|NW| - |MM|") +
+      ggtitle(paste("a =",a,", s =",s), paste("różn. modułów MSE")) +
+      theme(legend.position = "bottom") +
+      scale_colour_manual(name="Estymator",
+        values=c(a="1950", s="1940", oba="red"),
+        labels=c(a="a", s="s", oba="(a,s)"))
+  
+  L <- list.append(L, p1)
+  L <- list.append(L, p2)
+  L <- list.append(L, p3)
+}
+    
+ggarrange(plotlist=L, ncol=3, nrow=4, common.legend = TRUE, legend="bottom")
+@
+
+Widzimy, że niemal dla wszystkich rozpatrywanych kombinacji parametrów a i s oraz rozmiaru próby n estymator NW ma mniejszą wariancję oraz mniejszy bądź podobny błąd średniokwadratowy. Obciążenia natomiast różnią się w zależności od dobranych parametrów. Widzimy, że dla np. $\text{a} = 2, \text{s} = 5$ estymator NW ma większe  obciążenie, natomiast w innych przypadkach to estymator MM jest bardziej obciążony. Możemy zatem wywnioskować, że dla rozkładu $\mathcal{G}(a,s)$ estymator NW jest lepszym estymatorem niż estymator MM (ze względu na wariancję oraz błąd średniokwadratowy).
+
+\subsection{Badanie stabilności estymatora NW}
+
+Sprawdzimy teraz, czy estymatory NW są stabilne. Eksperyment, który przeprowadzimy, polega na wylosowaniu $100$ wartości z rozkładu $\mathcal{G}(a,s)$, podzieleniu próby na $10$ losowych podzbiorów (za każdym razem usuwamy 10 innych wartości) i wyznaczeniu estymatorów NW dla tych podzbiorów, a następnie zmierzenia zmiany wartości tego estymatora względem estymatora NW dla całej próby. Eksperyment powtórzymy $1000$ razy dla każdej badanej wartości parametru a, a wyniki przedstawimy na wykresie.
+
+<<A5, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.cap="Badanie stabilności estymatora NW">>=
+
+n=100
+ile = 10^3
+
+
+gamma_NW_2 <- function(X) {
+  L.a <- c()
+  L.s <- c()
+  N <- length(X)
+  X.NW <- gamma_NW(X)
+  for (k in 1:(N / 10)) {
+    X.new <- X[-(((k - 1) * 10 + 1):(k * 10))]
+    X.new.NW <- gamma_NW(X.new)
+    L.a <- append(L.a, abs(X.NW[1] - X.new.NW[1])/abs(X.NW[1]))
+    L.s <- append(L.s, abs(X.NW[2] - X.new.NW[2])/abs(X.NW[2]))
+  }
+  return(c(mean(L.a), mean(L.s)))
+}
+
+A <- (1:30)/10
+s = 1
+
+xa <- c()
+xs <- c()
+
+for (a in A){
+M <- matrix(rgamma(n*ile, scale = s, shape = a), nrow=n, ncol=ile)
+M.vec <- apply(M, 2, gamma_NW_2)
+xa <- append(xa, mean(M.vec[1,]))
+xs <- append(xs, mean(M.vec[2,]))
+}
+
+
+p <- ggplot(data = data.frame(x = A, ya = xa * 100, ys = xs * 100), aes(x)) +
+    geom_point(aes(x=A, y=xa * 100, color = "a")) +
+    geom_point(aes(x=A, y=xs * 100, color = "s")) +
+    geom_point(aes(x=A, y=(xa + xs) * 100, color = "oba")) +
+    geom_hline(yintercept = 3.74) +
+    geom_hline(yintercept = 2*3.74) +
+    xlab("a") +
+    ylab("niestabilność [%]") +
+    ggtitle(paste("Stabilność estymatora NW dla różnych wartości a"), paste("s =",s, "ustalone")) +
+    theme(legend.position = "bottom") +
+    scale_colour_manual(name="Estymator NW",
+      values=c(a="1950", s="1940", oba="red"),
+      labels=c(a="a", s="s", oba="(a, s)"))
+    
+p
+@
+
+Widzimy, że dla $a \leq 1$ zdecydowanie bardziej stabilny jest estymator $\hat{a}_{NW}$, występuje natomiast duża niestabilność estymatora $\hat{s}_{NW}$. Dla $a > 1$ różnice pomiędzy niestabilnością estymatorów stają się coraz mniejsze i oscylują wokół prostej $y = 3,74$. Przeprowadzając tę analizę dla różnych wartości parametru s otrzymalibyśmy bardzo zbliżone wyniki. Spoglądając natomiast na ,,całkowitą" niestabilność estymatora NW widzimy, że jest ona wyraźnie większa dla $a \leq 1$. Dla małych wartości parametru a, przy losowym usunięciu $10\%$ elementów próby, możemy otrzymać wartości estymatorów NW różne nawet o $10\%$. Dla $a > 1$ średnia niestabilność utrzymuje się na poziomie około $7,48\%$.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Podsumowanie}
+Poniżej wypunktujemy najważniejsze wnioski, jakie można wyciągnąć z przeprowadzanych analiz:
+\begin{itemize}
+\item w rozkładzie $\mathcal{G}(a,s)$ parametr skali a odpowiada za pozycję maksimum funkcji gęstości, natomiast parametr kształtu za skośność wykresu,
+\item nie zawsze można analitycznie wyznaczyć estymator NW,
+\item w rozkładzie $\mathcal{G}(a,s)$ estymator NW jest lepszym estymatorem niż estymator MM,
+\item poziom niestabilności estymatora NW zależy od parametru a -- im bliżej zera, tym większa niestabilność, natomiast dla a $> 1$ średnia niestabilność utrzymuje się na poziomie około $7,48\%$.
+\end{itemize}
+
+
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\end{document}
+
+
+
+
+

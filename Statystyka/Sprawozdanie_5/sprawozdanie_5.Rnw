@@ -1,0 +1,381 @@
+\documentclass[12pt, a4paper]{article}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% dodatkowe pakiety LaTeX'a
+\usepackage[OT4]{polski}
+\usepackage[utf8]{inputenc}
+\usepackage[top=2.5cm, bottom=2.5cm, left=2cm, right=2cm]{geometry}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage[colorlinks=true, linkcolor=blue]{hyperref}
+\usepackage{bbm}
+\usepackage{amsmath}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ustawienia globalne
+<<ustawienia_globalne, echo=FALSE, warning=FALSE, message=FALSE>>=
+library(cluster)
+library(knitr)
+library(kableExtra)
+library(dplyr)
+library(ggplot2)
+library(grid)
+library(gridExtra)
+library(ggpubr)
+library(arules)
+library(reshape2)
+library(xtable) #pakiet do tworzenia tabel w formacie LaTeX'a
+library(RColorBrewer)
+library(ggrepel)
+library(factoextra)
+library(corrplot)
+library(seriation)
+library(rgl)
+library(ggalt)
+library(cowplot)
+library(magick)
+library(rlist)
+library(car)
+library(distr)
+library(distrEx)
+
+opts_chunk$set(fig.path='figure/', fig.align='center', fig.pos='H',fig.width=7, fig.height=4)
+
+# UWAGA: w razie potrzeby można zmieniać te ustawienia w danym chunk'u!
+@
+
+\begin{document}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% strona tytulowa
+\title{Sprawozdanie 5}
+\author{Jakub Markowiak \\ album 255705}
+\maketitle
+\tableofcontents
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Krótki opis zagadnienia}
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Opis eksperymentów/analiz}
+
+Przeprowadzimy następujące analizy i eksperymenty:
+\begin{enumerate}
+  \item Porównanie funkcji centralnie asymptotycznych w rozkładzie Poissona $\mathcal{P}(\lambda)$.
+\end{enumerate}
+
+
+\section{Wyniki}
+\subsection{Porównanie funkcji centralnie asymptotycznych w rozkładzie Poissona $\mathcal{P}(\lambda)$.}
+
+W tym sprawozdaniu rozpatrujemy rozkład $\mathcal{P}(\lambda)$, gdzie $\lambda$ -- nieznany parametr. Skupimy się na zbadaniu własności statystyk $S_1, S_2$ oraz $S_3$, które są funkcjami centralnie asymptotycznymi dla parametru $\lambda$:
+\begin{align}
+S_1 = \frac{\overline{X} - \lambda}{\sqrt{\lambda}} \sqrt{n}, \\
+S_2 = \frac{\overline{X} - \lambda}{\sqrt{\overline{X}}} \sqrt{n}, \\
+S_3 = \left( \sqrt{\overline{X}} - \sqrt{\lambda} \right) 2\sqrt{n}.
+\end{align}
+
+Wiemy, że statystyki $S_1$, $S_2$ oraz $S_3$ zbiegają według rozkładu do $\mathcal{N}(0,1)$. Sprawdźmy zatem, jaki powinien być minimalny rozmiar próby, aby przybliżenie rozkładem normalnym było wystarczająco dokładne.
+
+
+<<A1, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height=8, fig.cap="Dystrubanty empiryczne oraz odległość Kołmogorowa dla różnych rozmiarów próby">>=
+set.seed(1234)
+
+S.1 <- function(X.mean, lambda){
+  return(((X.mean)-lambda)/sqrt(lambda)*sqrt(n))
+}
+S.2 <- function(X.mean, lambda){
+  return(((X.mean)-lambda)/sqrt(X.mean)*sqrt(n))
+}
+S.3 <- function(X.mean, lambda){
+  return((sqrt(X.mean)-sqrt(lambda))*2*sqrt(n))
+}
+
+
+#Funkcje przyjmujące rozmiar próby, parametr lambda, liczbę powtórzeń K i zwracająca K-elementową próbę z S1, S2 i S3
+
+rozklad_S.1 <- function(n, lambda, K){
+  losuj <- function(x,k){
+    P <- rpois(k, lambda)
+    return(S.1(mean(P), lambda))
+  }
+  M <- c(1:K)
+  M <- sapply(M, losuj, k = n)
+  return(M)
+}
+
+rozklad_S.2 <- function(n, lambda, K){
+  losuj <- function(x,k){
+    P <- rpois(k, lambda)
+    return(S.2(mean(P), lambda))
+  }
+  M <- c(1:K)
+  M <- sapply(M, losuj, k = n)
+  return(M)
+}
+
+rozklad_S.3 <- function(n, lambda, K){
+  losuj <- function(x,k){
+    P <- rpois(k, lambda)
+    return(S.3(mean(P), lambda))
+  }
+  M <- c(1:K)
+  M <- sapply(M, losuj, k = n)
+  return(M)
+}
+
+lambda <- 3
+
+K = 10000
+
+rysuj <- function(X, tytul = "S") {
+  df <- as.data.frame(X)
+  Dn <- KolmogorovDist(df$X, Norm())
+  p <- ggplot(df, aes(x = X)) +
+    stat_ecdf(size = 1) +
+    stat_function(fun = pnorm,
+                  args = list(mean = 0, sd = 1),
+                  color = "red")
+  text <- paste("Dn =", toString(round(Dn, 3)))
+  annotation <- data.frame(x = -1,
+                           y = c(0.8),
+                           label = c(text))
+  p <- p + geom_text(
+    data = annotation,
+    aes(x = x, y = y, label = label),
+    ,
+    color = "blue",
+    size = 2,
+    fontface = "bold"
+  ) + ggtitle(paste(as.character(tytul), "; n = ", n)) + xlim(-3, 3)
+  return(p)
+}
+
+N <- c(11,90,500)
+
+L <- list()
+
+for (n in N){
+  X.1 <- rozklad_S.1(n, lambda, K) 
+  p.1 <- rysuj(X.1, tytul = "S.1")
+  L <- list.append(L, p.1)
+  
+  X.2 <- rozklad_S.2(n, lambda, K) 
+  p.2 <- rysuj(X.2, tytul = "S.2")
+  L <- list.append(L, p.2)
+  
+  X.3 <- rozklad_S.3(n, lambda, K) 
+  p.3 <- rysuj(X.3, tytul = "S.3")
+  L <- list.append(L, p.3)
+}
+
+figure <- ggarrange(plotlist=L, ncol=length(N), nrow=3)
+annotate_figure(figure, top = text_grob("Dystrybuanty empiryczne dla S.1, S.2, S.3", color = "black", face = "bold", size = 14))
+@
+
+Widzimy, że te statystyki faktycznie zbiegają według rozkładu do $\mathcal{N}(0,1)$. Odległość Kołmogorowa $D_n$ już dla próby rozmiaru $11$ wynosi około $0.05$, dla próby rozmiaru $90$ -- około $0.02$, natomiast dla próby rozmiaru $500$  -- $0.01$.
+
+Możemy przyjąć, że od $n = 11$ aproksymacja rozkładem asymptotycznym jest wystarczająco dokładna ($D_n < 0.05$).
+
+Skonstruujemy teraz asymptotyczne przedziały ufności dla $S_1, S_2$ oraz $S_3$ na poziomie ufności $1 - \alpha$. Mają one postać kolejno:
+
+\begin{align}
+[L, P]_{S_1} &= \left[
+  \frac{{z^2_{1 - \frac{\alpha}{2}}}}{2n} + \overline{X} - \frac{{z_{1 - \frac{\alpha}{2}}}}{2\sqrt{n}} \sqrt{\frac{{z^2_{1 - \frac{\alpha}{2}}}}{n} + 4\overline{X}},
+  \frac{{z^2_{\frac{\alpha}{2}}}}{2n} + \overline{X} - \frac{{z_{\frac{\alpha}{2}}}}{2\sqrt{n}} \sqrt{\frac{{z^2_{\frac{\alpha}{2}}}}{n} + 4\overline{X}} 
+  \right], \\
+[L, P]_{S_2} &= \left[
+  \overline{X} - \frac{\sqrt{\overline{X}} z_{1-\frac{\alpha}{2}}}{\sqrt{n}}, 
+  \overline{X} - \frac{\sqrt{\overline{X}} z_{\frac{\alpha}{2}}}{\sqrt{n}}
+\right], \\
+[L, P]_{S_3} &= \left[
+  \left[\max{\left(0, \sqrt{\overline{X}} - \frac{z_{1-\frac{\alpha}{2}}}{2\sqrt{n}}\right)\right]^2,
+  \left(\sqrt{\overline{X}} - \frac{z_{\frac{\alpha}{2}}}{2\sqrt{n}}\right)^2
+  \right)}
+\right],
+\end{align}
+
+gdzie $z_{\alpha}$ -- $\alpha$-kwantyl rozkładu normalnego.
+
+Zdefiniujemy teraz funkcję \verb+przedzialy+, które dla zadanej próby i $\alpha$ zwrócą odpowiednie przedziały ufności na poziomie ufności $1-\alpha$.
+
+
+<<A2, echo=TRUE, eval=TRUE, results='asis', message=FALSE, fig.height=8, fig.cap="Definicja funkcji wyznaczającej przedziały ufności">>=
+przedzialy <- function(X, alpha) {
+  #wyliczenie składników
+  X.sr <- mean(X)
+  z.1 <- qnorm(1 - alpha / 2)
+  z.2 <- qnorm(alpha / 2)
+  n <- length(X)
+  
+  #lewa i prawa strona dla S.1
+  L.1 <- z.1 ^ 2 / (2 * n) + X.sr - z.1 / (2 * sqrt(n)) * sqrt(z.1 ^ 2 /
+                                                                 n + 4 * X.sr)
+  P.1 <- z.2 ^ 2 / (2 * n) + X.sr - z.2 / (2 * sqrt(n)) * sqrt(z.2 ^ 2 /
+                                                                 n + 4 * X.sr)
+  
+  #lewa i prawa strona dla S.2
+  L.2 <- X.sr - sqrt(X.sr) * z.1 / sqrt(n)
+  P.2 <- X.sr - sqrt(X.sr) * z.2 / sqrt(n)
+  
+  #lewa i prawa strona dla S.3
+  L.3 <- (max(0, sqrt(X.sr) - z.1 / (2 * sqrt(n)))) ^ 2
+  P.3 <- (sqrt(X.sr) - z.2 / (2 * sqrt(n))) ^ 2
+  
+  #ramka danych zawierająca końce przedziałów ufności
+  table <- data.frame(
+    S.1 = c(L.1, P.1),
+    S.2 = c(L.2, P.2),
+    S.3 = c(L.3, P.3)
+  )
+  
+  return(table)
+}
+@
+
+Wykorzystując napisaną funkcję zbadamy i porównamy własności przedziałów ufności w zależności od parametru $\lambda$, poziomu ufności $1-\alpha$ oraz rozmiaru próby $n$.
+
+
+<<A3, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height=8, fig.cap="Własności asymptotycznych przedziałów ufności">>=
+
+czy_pokryte <- function(X, lambda, alfa){
+  P <- przedzialy(X, alpha = alfa)
+  
+  czy.1 <- lambda > P$S.1[1] && lambda < P$S.1[2]
+  czy.2 <- lambda > P$S.2[1] && lambda < P$S.2[2]
+  czy.3 <- lambda > P$S.3[1] && lambda < P$S.3[2]
+  
+  return(c(czy.1,czy.2,czy.3))
+}
+  
+dlugosc_przedzialu <- function(X, alfa){
+  P <- przedzialy(X, alpha = alfa)
+  d.1 <- abs(P$S.1[2] - P$S.1[1])
+  d.2 <- abs(P$S.2[2] - P$S.2[1])
+  d.3 <- abs(P$S.3[2] - P$S.3[1])
+  return(c(d.1,d.2,d.3))
+}
+
+
+Lambda = c(0.5, 1, 3)
+Alpha = c(0.01, 0.02, 0.05)
+N = c(5, 10, 25, 50, 100, 250, 500)
+
+L.P <- list()
+L.WD <- list()
+
+for (lambda in Lambda) {
+  for (alpha in Alpha) {
+    P.1 <- as.numeric()
+    P.2 <- as.numeric()
+    P.3 <- as.numeric()
+    
+    WD.1 <- as.numeric()
+    WD.2 <- as.numeric()
+    WD.3 <- as.numeric()
+    
+    for (n in N){
+      K = 10000 #liczba powtórzeń
+      
+      p.1 <- as.numeric() #lista T i F poryć w danej iteracji
+      p.2 <- as.numeric()
+      p.3 <- as.numeric()
+      
+      wd.1 <- as.numeric()
+      wd.2 <- as.numeric()
+      wd.3 <- as.numeric()
+      
+      for (i in c(1:K)){
+          X <- rpois(n, lambda)
+          pokrycie <- czy_pokryte(X, lambda = lambda, alfa = alpha)
+          dlugosci <- dlugosc_przedzialu(X, alfa = alpha)
+          p.1 <- append(p.1, pokrycie[1])
+          wd.1 <- append(wd.1, dlugosci[1])
+          p.2 <- append(p.2, pokrycie[2])
+          wd.2 <- append(wd.2, dlugosci[2])
+          p.3 <- append(p.3, pokrycie[3])
+          wd.3 <- append(wd.3, dlugosci[3])
+          }
+      
+      P.1 <- append(P.1, sum(p.1)/K)
+      P.2 <- append(P.2, sum(p.2)/K)
+      P.3 <- append(P.3, sum(p.3)/K)
+      
+      WD.1 <- append(WD.1, mean(wd.1))
+      WD.2 <- append(WD.2, mean(wd.2))
+      WD.3 <- append(WD.3, mean(wd.3))
+    
+    }
+    
+    P. <- data.frame(N, P.1, P.2, P.3)
+    WD. <- data.frame(N, WD.1, WD.2, WD.3)
+    
+    plot.1 <- ggplot(P.) + 
+      geom_point(aes(x=N, y=P.1, color = "S1")) +
+      geom_point(aes(x=N, y=P.2, color = "S2")) +
+      geom_point(aes(x=N, y=P.3, color = "S3")) + 
+      scale_x_continuous(trans = 'log2', breaks=N) +
+      scale_colour_manual(name="Fun. centralna",
+        values=c(S1="darkgreen", S2="blue", S3="red"),
+        labels=c(S1="S.1", S2="S.2", S3="S.3")) +
+      xlab("n") + 
+      ylab("Pokrycie [%]") +
+      ggtitle(paste("l =", lambda, "a =", alpha))
+    L.P <- list.append(L.P, plot.1)
+    
+    plot.2 <- ggplot(WD.) + 
+      geom_point(aes(x=N, y=WD.1, color = "S1")) +
+      geom_point(aes(x=N, y=WD.2, color = "S2")) +
+      geom_point(aes(x=N, y=WD.3, color = "S3")) + 
+      scale_x_continuous(trans = 'log2', breaks=N) +
+      scale_colour_manual(name="Fun. centralna",
+        values=c(S1="darkgreen", S2="blue", S3="red"),
+        labels=c(S1="S.1", S2="S.2", S3="S.3")) +
+      xlab("n") + 
+      ylab("Długość") +
+      ggtitle(paste("l =", lambda, "; a =", alpha))
+    L.WD <- list.append(L.WD, plot.2)
+  }
+}
+@
+
+<<A4, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height=8, fig.cap="Własności asymptotycznych przedziałów ufności - empiryczne pokrycie">>=
+figure.1 <- ggarrange(plotlist=L.P, ncol=length(Lambda), nrow=length(Alpha), common.legend = TRUE, legend="bottom")
+annotate_figure(figure.1,
+               top = text_grob("Pokrycie parametru l w zależności od poziomu ufności 1-a oraz rozmiaru próby", color = "black", face = "bold", size = 9))
+@
+
+<<A5, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height=8, fig.cap="Własności asymptotycznych przedziałów ufności - długość przedziału">>=
+figure.2 <- ggarrange(plotlist=L.WD, ncol=length(Lambda), nrow=length(Alpha), common.legend = TRUE, legend="bottom")
+annotate_figure(figure.2,
+               top = text_grob("Dlugosc przedzialu dla parametru l w zależności od poziomu ufności 1-a oraz rozmiaru próby", color = "black", face = "bold", size = 9))
+@
+
+Widzimy, że wraz ze wzrostem parametru $\lambda$ rośnie empiryczne prawdopodobieństwo pokrycia niezależnie od $\alpha$ oraz rozmiaru próby $n$. Oczywiście wraz ze wzrostem parametru $\alpha$ rośnie szerokość przedziału oraz prawdopodobieństwo pokrycia. Widzimy, że długości przedziałów skonstruowanych na bazie $S_2$ oraz $S_3$ są zbliżone, natomiast w przypadku $S_3$ przedziały ufności są zauważalnie dłuższe dla ,,małych" $n$.
+
+Najlepszym przedziałem ufności wydaje się być ten skonstruowany z wykorzystaniem $S_3$, ponieważ dla $n \geq 10$ empiryczne prawdopodobieństwo pokrycia jest zbliżone do pokrycia dla $S_1$, natomiast długość przedziału jest krótsza.
+
+Z drugiej strony, najgorszym przedziałem ufności wydaje się być ten skonstruowany z wykorzystaniem $S_2$, ponieważ najczęściej odpowiada mu najniższe empiryczne prawdopodobieństwo pokrycia, a przy tym nie wyróżnia się długością przedziału.
+
+Dla małych rozmiarów próby najlepszy wydaje się być przedział uzyskany z wykorzystaniem $S_1$. Mimo większej długości przedziału, uzyskiwane rezultaty są dość stabilne i empiryczne pokrycie jest bardzo zbliżone poziomowi ufności $1 - \alpha$ niezależnie od parametru $\lambda$. Minimalizujemy wówczas ryzyko popełnienia błędu. (dla $S_2$ i $S_3$ ryzyko popełnienia błędu może wynieść nawet 10$\%$.)
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Podsumowanie}
+Poniżej wypunktujemy najważniejsze wnioski, jakie można wyciągnąć z przeprowadzanych analiz:
+\begin{itemize}
+\item już dla $n = 11$ możemy przybliżać rozkład $S_1$, $S_2$ oraz $S_3$ rozkładem normalnym $\mathcal{N}(0,1)$,
+\item wraz ze wzrostem parametru $\lambda$ rośnie empiryczne prawdopodobieństwo pokrycia,
+\item przedział ufności skonstruowany z wykorzystaniem $S_3$ wydaje się być najepszy, natomiast najgorszy to ten oparty na $S_2$.
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\end{document}
+
+
+
+
+

@@ -1,0 +1,651 @@
+\documentclass[12pt, a4paper]{article}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% dodatkowe pakiety LaTeX'a
+\usepackage[OT4]{polski}
+\usepackage[utf8]{inputenc}
+\usepackage[top=2.5cm, bottom=2.5cm, left=2cm, right=2cm]{geometry}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage[colorlinks=true, linkcolor=blue]{hyperref}
+\usepackage{bbm}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ustawienia globalne
+<<ustawienia_globalne, echo=FALSE, warning=FALSE, message=FALSE>>=
+library(MASS)
+library(knitr)
+library(kableExtra)
+library(dplyr)
+library(ggplot2)
+library(grid)
+library(gridExtra)
+library(xtable) #pakiet do tworzenia tabel w formacie LaTeX'a
+opts_chunk$set(fig.path='figure/', fig.align='center', fig.pos='H',fig.width=7, fig.height=4)
+
+# UWAGA: w razie potrzeby można zmieniać te ustawienia w danym chunk'u!
+@
+
+
+\begin{document}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% strona tytulowa
+\title{Sprawozdanie 2}
+\author{Jakub Markowiak \\ album 255705}
+\maketitle
+\tableofcontents
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Krótki opis zagadnienia}
+
+W tym sprawozdaniu zajmiemy się analizą danych \verb+Salaries+ z pakietu \verb+carData+, zawierających informacje o wysokości wynagrodzenia pracowników na jednym z uniwersytetów w USA oraz wykorzystując podstawowe metody graficzne spróbujemy rozstrzygnąć, czy występuje dyskryminacja płacowa ze względu na płeć. Następnie przeanalizujemy własności histogramu, porównamy różne metody jego konstruowania i sprawdzimy, jak dobrze odpowiada on teoretycznej gęstości. Ostatnim zagadnieniem, które będziemy rozpatrywać, jest estymacja dystrybuanty oraz pojęcie dystrybuanty empirycznej. Napiszemy R-funkcję konstruującą dystrybuantę empiryczną oraz obliczającą statystykę Kołmogorowa $D_n$, aby kolejno zbadać ich własności. 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Opis eksperymentów/analiz}
+
+Przeprowadzimy następujące analizy i eksperymenty:
+\begin{enumerate}
+  \item analiza danych \verb+Salaries+ z pakietu \verb+carData+,
+  \item estymacja gęstości i badanie własności histogramu,
+  \item zdefiniowanie i badanie własności dystrybuanty empirycznej.
+\end{enumerate}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Wyniki}
+\subsection{Analiza danych Salaries z pakietu carData}
+
+Rozpoczynamy od wczytania danych \verb+Salaries+ z pakietu \verb+carData+. Zauważamy, że w danych nie występują brakujące obserwacje, zatem przechodzimy do analizy. Konstruujemy histogram oraz estymator jądrowy dla zmiennej \verb+salary+, która opisuje roczne wynagrodzenie pracownika.
+
+<<wykres1, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.cap="Wykresy dla salary">>=
+library(carData)
+data("Salaries")
+#Przeniesienie "Salaries" do obszaru roboczego
+attach(Salaries)
+#Sprawdzenie, czy występują brakujące dane
+na <- which(is.na(Salaries)==TRUE)
+
+
+# histogram + estymator jądrowy
+p1 <- ggplot(Salaries, aes(x = salary)) +
+  geom_histogram(aes(y = ..density..),
+                 bins = 13,
+                 color = "black",
+                 fill = "lightgreen") +
+  geom_density(color = "blue",
+               alpha = 0.5) +
+  theme(legend.position = "none",
+        plot.title = element_text(size = 8)) +
+  ggtitle("Histogram i estymator jądrowy")
+
+salary_scaled <- salary/10000
+
+p2 <- ggplot(Salaries, aes(x = salary_scaled)) +
+  geom_boxplot(color = "blue",
+               fill = "lightgreen") +
+  theme(legend.position = "none",
+        plot.title = element_text(size = 8),
+        axis.text.y=element_blank(),
+        axis.line.y=element_blank()) +
+  ggtitle("Wykres pudełkowy") +
+  scale_x_continuous(breaks=c(round(as.numeric(quantile(salary_scaled)[1]), 2), median(salary_scaled), round(as.numeric(quantile(salary_scaled)[5]), 2), 20)) +
+  ylab("") +
+  xlab("salary [10 tys]")
+
+p3 <- ggplot(Salaries, aes(sample = salary)) +
+  stat_qq(color = "lightgreen") +
+  stat_qq_line(color = "blue") +
+  theme(legend.position = "none",
+        plot.title = element_text(size = 8)) +
+  ggtitle("Wykres kwantylowy")
+
+grid.arrange(arrangeGrob(p1, ncol=1, nrow=1), 
+             arrangeGrob(p2,p3, ncol=1, nrow=2), 
+             heights=c(4,1), 
+             widths=c(1.5,1))
+@
+
+Z histogramu możemy odczytać, że rozkład cechy \verb+salary+ jest rozkładem jednomodalnym prawostronnie skośnym. Wykres pudełkowy natomiast wyraźnie wskazał kilka obserwacji odstających (roczna płaca ponad $200,000$). Mediana rocznego wynagrodzenia wynosi natomiast $107,300$, a $75\%$ zatrudnionych zarabia mniej niż $134,200$. Widzimy także z wykresu kwantylowego, że rozkład \verb+salary+ nie jest rozkładem normalnym.
+
+Zajmiemy się teraz analizą rocznych płac ze względu na płeć.
+<<wykres2, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.cap="Częstość zatrudnienia na danych stanowiskach">>=
+
+#wykresy mozaikowe
+
+cbbPalette <- c("#ff6666", "#3399ff")
+
+p1 <- ggplot(Salaries, aes(fill=sex, x=rank)) + 
+  geom_bar(aes(y=(..count..)/sum(..count..))) + 
+  scale_fill_manual(values=cbbPalette) +
+  ylab("częstość") +
+  theme(legend.position="none",
+        axis.text.x = element_text(angle = 70, hjust = 1),
+        plot.title = element_text(size = 8)) +
+  ggtitle("Struktura zatrudnienia")
+
+p2 <- ggplot(Salaries, aes(fill=sex, x=rank)) + 
+  geom_bar(position="fill") +
+  scale_fill_manual(values=cbbPalette) +
+  theme(axis.text.x = element_text(angle = 70, hjust = 1),
+        plot.title = element_text(size = 8)) +
+  ggtitle("Odsetek mężczyzn/kobiet na danym stanowisku") +
+  ylab("")
+
+grid.arrange(p1, p2, ncol=2, nrow=1, widths=c(1,1.5))
+
+@
+
+Widzimy, że na każdym stanowisku jest zatrudnionych zdecydowanie więcej mężczyzn niż kobiet, natomiast stosunek kobiet do mężczyzn zatrudnionych jako \verb+AsstProf+ jest zbliżony do takiego stosunku dla \verb+AssocProf+. Zauważalna różnica występuje natomiast w stosunku kobiet do mężczyzn na stanowisku \verb+Prof+.  
+
+Sprawdzimy również, czy występują jakieś zależności pomiędzy wynagrodzeniem, a stażem pracy i czasem, który upłynął od doktoratu, również w zależności od płci.
+
+<<fig=TRUE, echo=FALSE, eval=TRUE, results='asis', warning=FALSE, message=FALSE, fig.cap="Wykresy rozrzutu">>=
+
+#wykresy rozrzutu
+
+p1 <- ggplot(Salaries) +
+  geom_point(aes(
+    x = salary_scaled,
+    y = yrs.service,
+    colour = sex == "Female",
+    size = rank,
+    alpha = 0.01
+  )) +
+  scale_colour_manual(name = 'sex', values = setNames(cbbPalette, c(T, F))) +
+  xlab("salary [10 tys]") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.3),
+        legend.position="none")
+
+p2 <-ggplot(Salaries) +
+  geom_point(aes(
+    x = salary_scaled,
+    y = yrs.since.phd,
+    colour = sex == "Female",
+    size = rank,
+    alpha = 0.01
+  )) +
+  scale_colour_manual(name = 'sex', values = setNames(cbbPalette, c(T, F))) +
+  xlab("salary [10 tys]") +
+  ylab("") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.3),
+        legend.position="right")
+
+
+grid.arrange(p1, p2, ncol=2, nrow=1, widths=c(1,1.4), top="Salary i yrs.service/yrs.since.phd vs rank i sex")
+
+@
+
+Widzimy, że w przypadku kobiet występują obserwacje odstające -- przykładowo na stanowisku \verb+AssocProf+ wypłata dla kobiet jest niższa nawet pomimo zbliżonego stażu oraz upłyniętego czasu od uzyskania doktoratu. Nie widać natomiast dużych rozbieżności na stanowisku \verb+AsstProf+. W większości obserwowanych przypadków wypłata kobiet jest zauważalnie bliżej dolnej granicy wynagrodzeń.
+
+Narysujemy teraz wykresy pudełkowe i gęstości empiryczne dla wynagrodzeń w zależności od płci oraz zajmowanego stanowiska.
+
+<<wykresy_grupy, fig=TRUE, echo=FALSE, eval=TRUE, results='asis', warning=FALSE, message=FALSE, fig.cap="Wykresy pudełkowe i gęstości z podziałem na sex i rank">>=
+
+
+
+sex_m <- subset(Salaries, sex=="Male")
+sex_f <- subset(Salaries, sex=="Female")
+
+p1 <-
+  ggplot(sex_m, aes(x = salary , fill = rank)) +
+  geom_density(alpha = 0.5) +
+  ggtitle("Density Male") +
+  scale_x_continuous(breaks = c(50000, 100000, 150000, 200000)) +
+  coord_cartesian(xlim = c(50000, 200000)) +
+  scale_fill_manual(values=c("red", "lightgreen", "lightblue"))
+p2 <-
+  ggplot(sex_f, aes(x = salary , fill = rank)) + 
+  geom_density(alpha = 0.5)+
+  ggtitle("Density Female") +
+  scale_x_continuous(breaks=c(50000,100000,150000,200000)) +
+  coord_cartesian(xlim = c(50000,200000)) +
+  scale_fill_manual(values=c("red", "lightgreen", "lightblue"))
+p3 <-
+  ggplot(sex_m, aes(x = salary , fill = rank)) + 
+  geom_boxplot(alpha = 0.5) +
+  ggtitle("Boxplot Male") +
+  scale_x_continuous(breaks=c(50000,100000,150000,200000)) +
+  coord_cartesian(xlim = c(50000,200000)) +
+  scale_fill_manual(values=c("red", "lightgreen", "lightblue"))
+p4 <- ggplot(sex_f, aes(x = salary , fill = rank)) +
+  geom_boxplot(alpha = 0.5) +
+  ggtitle("Boxplot Female") +
+  scale_x_continuous(breaks=c(50000,100000,150000,200000)) +
+  coord_cartesian(xlim = c(50000,200000)) +
+  scale_fill_manual(values=c("red", "lightgreen", "lightblue"))
+
+grid.arrange(p1, p2, p3, p4, ncol=2)
+@
+
+Rysunek\Rysunek~\ref{fig:wykresy_grupy} potwierdza nasze przypuszczenia, że występują wyraźne róznice w płacach dla \verb+AssocProf+. Również dla pozostałcyh stanowisk zauważalne są różnice, jednak nie aż tak drastyczne. Warto sprawdzić, czy wpływu na te różnice nie mają inne zmienne. Sprawdzimy więc, jak ma się wynagrodzenie w grupie pracowników, których staż to od $0$ do $10$ lat oraz uzyskali doktorat od $0$ do $20$ lat temu.
+
+<<fig=TRUE, echo=FALSE, eval=TRUE, results='asis', warning=FALSE, message=FALSE, fig.cap="Wkresy pudełkowe i gęstości w grupie: staz: [0,10], doktorat: [0,20]">>=
+s.1 <- c(0,10)
+s.2 <- c(0,20)
+
+sex_m1 <- subset(sex_m, yrs.service > s.1[1] & yrs.service < s.1[2] & yrs.since.phd > s.2[1] & yrs.since.phd < s.2[2])
+sex_f1 <- subset(sex_f, yrs.service > s.1[1] & yrs.service < s.1[2] & yrs.since.phd > s.2[1] & yrs.since.phd < s.2[2]) 
+
+p7 <-
+  ggplot(sex_m1, aes(x = salary , fill = rank)) + 
+  geom_density(alpha = 0.5) +
+  ggtitle("Density Group Male ") +
+  scale_x_continuous(breaks=c(50000,100000,150000,200000)) +
+  coord_cartesian(xlim = c(50000,200000)) +
+  scale_fill_manual(values=c("red", "lightgreen", "lightblue"))
+
+p8 <-
+  ggplot(sex_f1, aes(x = salary , fill = rank)) + 
+  geom_density(alpha = 0.5)+
+  ggtitle("Density Group Female ") +
+  scale_x_continuous(breaks=c(50000,100000,150000,200000)) +
+  coord_cartesian(xlim = c(50000,200000)) +
+  scale_fill_manual(values=c("red", "lightgreen", "lightblue"))
+
+
+p5 <- ggplot(sex_m1, aes(x = salary , fill = rank)) +
+  geom_boxplot(alpha = 0.5) +
+  ggtitle("Boxplot Group Male") +
+  scale_x_continuous(breaks=c(50000,100000,150000,200000)) +
+  coord_cartesian(xlim = c(50000,200000)) +
+  scale_fill_manual(values=c("red", "lightgreen", "lightblue"))
+
+p6 <- ggplot(sex_f1, aes(x = salary , fill = rank)) +
+  geom_boxplot(alpha = 0.5) +
+  ggtitle("Boxplot Group Female") +
+  scale_x_continuous(breaks=c(50000,100000,150000,200000)) +
+  coord_cartesian(xlim = c(50000,200000))  +
+  scale_fill_manual(values=c("red", "lightgreen", "lightblue"))
+
+grid.arrange(p7, p8, p5, p6, ncol=2)
+
+sex_m1.prof <- subset(sex_m1, rank=="Prof")
+sex_m1.aprof <- subset(sex_m1, rank=="AssocProf")
+sex_m1.asprof <- subset(sex_m1, rank=="AsstProf")
+
+sex_f1.prof <- subset(sex_f1, rank=="Prof")
+sex_f1.aprof <- subset(sex_f1, rank=="AssocProf")
+sex_f1.asprof <- subset(sex_f1, rank=="AsstProf")
+
+med.m1.prof <- as.integer(median(sex_m1.prof$salary))
+med.f1.prof <- as.integer(median(sex_f1.prof$salary))
+
+med.m1.aprof <- as.integer(median(sex_m1.aprof$salary))
+med.f1.aprof <- as.integer(median(sex_f1.aprof$salary))
+
+med.m1.asprof <- as.integer(median(sex_m1.asprof$salary))
+med.f1.asprof <- as.integer(median(sex_f1.asprof$salary))
+@
+
+Odczytujemy, że w tej grupie mediana wynagrodzeń kobiet na stanowisu \verb+AssocProf+ wynosi \Sexpr{med.f1.aprof}, a mediana wynagrodzeń mężczyzn jest równa \Sexpr{med.m1.aprof}. Mediany dla kobiet i mężczyzn dla \verb+AsstProf+ wynoszą kolejno \Sexpr{med.f1.asprof} i \Sexpr{med.m1.asprof}. Obserwujemy również w tej grupie brak kobiet na stanowisku \verb+Prof+.
+Możemy zaobserwować, że nawet pomimo zbliżonego stażu, czasu od uzyskania doktoratu oraz stanowiska na uczelni, płace drastycznie się różnią. Szczególnie widać to wśród osób zatrudnionych na stanowisku \verb+AssocProf+. Interesujący jest również fakt, że w grupie kobiet mediana wynagrodzeń \verb+AsstProf+ jest identyczna jak dla \verb+AssocProf+, zatem nawet pomimo awansu kobiety nie mogą liczyć na zauważalną podwyżkę.
+
+Na podstawie zebranych danych i powyższych analiz możemy wyciągnąć wstępny wniosek, że na tej uczelni występuje dyskryminacja płacowa pod względem płci. Nawet w przypadku porównywania osób o podobnym doświadczeniu i czasie od uzyskania doktoratu wyraźnie zauważalne są różnice, których nie możemy w inny sposób wytłumaczyć. Warto byłoby również zastanowić się nad ewentualnym występowaniem dyskryminacji w procesie promotorskim -- znacznie częściej mężczyźni niż kobiet awansowali na stanowisko \verb+Prof+, co również przyczynia się do różnic płacowych.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Estymacja gęstości i badanie własności histogramu}
+
+Estymator jądrowy definiujemy jako
+\begin{equation}
+\hat{f_n}(t) = \frac{1}{n\lambda_n}\sum_{i=1}^{n}K\left(\frac{t-X_i}{\lambda_n}\right),
+\end{equation}
+gdzie $K(t)$ to jądro. Zbadamy, jak zachowuje się estymator jądrowy w zależności od liczności próby, wyboru jądra oraz szerokości okna $\lambda_n$.
+
+W tym zagadnieniu będziemy rozpatrywali rozkład Gamma $\mathcal{G}(9,\,1)$. Wygenerujemy $n$-elementową próbę z tego rozkładu, gdzie $n \in(30, 50, 100)$, a następnie sporządzimy histogramy oraz estymatory jądrowe i przyrównamy je do gęstości teoretycznej.
+
+<<fig=TRUE, echo=FALSE, eval=TRUE, results='asis', warning=FALSE, message=FALSE, fig.cap="Histogramy i estymatory jądrowe dla n prób">>=
+set.seed(27182)
+
+par(mfrow=c(1,3))
+### 30 prób
+n <- 30
+k <- 9  #ksztalt 
+s <- 1  #skala
+
+X <- rgamma(n, shape=k, scale=s) # próba losowa
+
+hist(X, probability=T, col="lightblue", xlim=c(0,16), ylim=c(0,0.6), main=paste("n =",n))
+dens <- density(X)
+lines(dens, col="blue", lwd=2)
+curve(dgamma(x, shape=k, scale=s), col="red", lwd=2, add=T)
+legend("topright", c("histogram", "est. jądrowy", "gęstość teoretyczna"), col=c("lightblue", "blue", "red"), lwd=2, bg="azure2")
+
+### 50 prób
+n <- 50
+k <- 5  #ksztalt 
+s <- 1  #skala
+
+X <- rgamma(n, shape=k, scale=s) # próba losowa
+
+hist(X, probability=T, col="lightblue", xlim=c(0,16), ylim=c(0,0.6), main=paste("n =",n))
+dens <- density(X)
+lines(dens, col="blue", lwd=2)
+curve(dgamma(x, shape=k, scale=s), col="red", lwd=2, add=T)
+legend("topright", c("histogram", "est. jądrowy", "gęstość teoretyczna"), col=c("lightblue", "blue", "red"), lwd=2, bg="azure2")
+
+### 100 prób
+n <- 100
+k <- 5  #ksztalt 
+s <- 1  #skala
+
+X <- rgamma(n, shape=k, scale=s) # próba losowa
+
+hist(X, probability=T, col="lightblue", xlim=c(0,16), ylim=c(0,0.6), main=paste("n =",n))
+dens <- density(X)
+lines(dens, col="blue", lwd=2)
+curve(dgamma(x, shape=k, scale=s), col="red", lwd=2, add=T)
+legend("topright", c("histogram", "est. jądrowy", "gęstość teoretyczna"), col=c("lightblue", "blue", "red"), lwd=2, bg="azure2")
+
+par(mfrow=c(1,1))
+@
+
+Widzimy, że wraz ze wzrostem obserwacji estymator jądrowy coraz lepiej przybliża gęstość teoretyczną. Zauważamy także, że w zależności od $n$ zmienia się liczba przedziałów klasowych histogramu. Zbadamy więc, jak zachowuje się histogram dla ustalonej, $100$-elementowej próby $\mathbf{X}$, w zależności od doboru przedziałów klasowych.
+
+<<fig=TRUE, echo=FALSE, eval=TRUE, results='asis', warning=FALSE, message=FALSE, fig.cap="Histogramy dla różnych algorytmów wyboru przedziałów klasowych">>=
+
+par(mfrow=c(1,4))
+### przedzialy klasowe dla n = 100
+#Sturges
+hist(X, probability=T, col="lightblue", xlim=c(0,16), ylim=c(0,0.6), main=paste("Sturges"), breaks="Sturges")
+curve(dgamma(x, shape=k, scale=s), col="red", lwd=2, add=T)
+
+#Scott
+hist(X, probability=T, col="lightblue", xlim=c(0,16), ylim=c(0,0.6), main=paste("Scott"), breaks="Scott")
+curve(dgamma(x, shape=k, scale=s), col="red", lwd=2, add=T)
+
+#Freedman-Diaconis
+hist(X, probability=T, col="lightblue", xlim=c(0,16), ylim=c(0,0.6), main=paste("Freedman-Diaconis"), breaks="Freedman-Diaconis")
+curve(dgamma(x, shape=k, scale=s), col="red", lwd=2, add=T)
+
+#30
+hist(X, probability=T, col="lightblue", xlim=c(0,16), ylim=c(0,0.6), main=paste("30 przedzialow"), breaks=30)
+curve(dgamma(x, shape=k, scale=s), col="red", lwd=2, add=T)
+par(mfrow=c(1,1))
+@
+
+Wraz ze wzrostem liczby przedziałów klasowych mogą występować gwałtowne skoki w histogramie. Szczególnie dobrze widać to dla przypadku z $30$ przedziałami klasowymi. Wybór mniejszej liczby klas pozwala zapobiegać takim skokom kosztem wygładzenia histogramu.
+
+Sprawdzimy teraz jak zachowuje się estymator gęstości dla $30$-elementowej próby $\textbf{X}$ w zależności od szerokości okna (parametr \verb+bw+).
+
+<<fig=TRUE, echo=FALSE, eval=TRUE, results='asis', warning=FALSE, message=FALSE, fig.cap="Estymatory jądrowe dla różnych wyborów jądra i szerokości okna">>=
+par(mfrow=c(2,3))
+###estymatory jądrowe
+X <- rgamma(30, shape=k, scale=s) # próba losowa
+
+#Gaussian
+hist(X, probability=T, col="lightblue", xlim=c(0,16), ylim=c(0,0.6), main=paste("Jądro gaussowskie"), sub=paste("bw domyślne"), breaks="Scott")
+lines(density(X, kernel="gaussian"), col="darkgreen", lwd=2)
+curve(dgamma(x, shape=k, scale=s), col="red", lwd=2, add=T)
+
+sr = 3
+hist(X, probability=T, col="lightblue", xlim=c(0,16), ylim=c(0,0.6), main=paste("Jądro gaussowskie"), sub=paste("bw =", sr), breaks="Scott")
+lines(density(X, kernel="gaussian", bw=sr), col="darkgreen", lwd=2)
+curve(dgamma(x, shape=k, scale=s), col="red", lwd=2, add=T)
+
+sr = 0.4
+hist(X, probability=T, col="lightblue", xlim=c(0,16), ylim=c(0,0.6), main=paste("Jądro gaussowskie"), sub=paste("bw =", sr), breaks="Scott")
+lines(density(X, kernel="gaussian", bw=sr), col="darkgreen", lwd=2)
+curve(dgamma(x, shape=k, scale=s), col="red", lwd=2, add=T)
+
+#Epanechnikov
+hist(X, probability=T, col="lightblue", xlim=c(0,16), ylim=c(0,0.6), main=paste("Jądro Epanechnikova"), sub=paste("bw domyślne"), breaks="Scott")
+lines(density(X, kernel="epanechnikov"), col="blue", lwd=2)
+curve(dgamma(x, shape=k, scale=s), col="red", lwd=2, add=T)
+
+sr = 3
+hist(X, probability=T, col="lightblue", xlim=c(0,16), ylim=c(0,0.6), main=paste("Jądro Epanechnikova"), sub=paste("bw =", sr), breaks="Scott")
+lines(density(X, kernel="epanechnikov", bw=sr), col="blue", lwd=2)
+curve(dgamma(x, shape=k, scale=s), col="red", lwd=2, add=T)
+
+sr = 0.4
+hist(X, probability=T, col="lightblue", xlim=c(0,16), ylim=c(0,0.6), main=paste("Jądro Epanechnikova"), sub=paste("bw =", sr), breaks="Scott")
+lines(density(X, kernel="epanechnikov", bw=sr), col="blue", lwd=2)
+curve(dgamma(x, shape=k, scale=s), col="red", lwd=2, add=T)
+par(mfrow=c(1,1))
+@
+
+Wraz ze wzrostem parametru \verb+bw+ $(>1)$ wykres gęstości spłaszcza się oraz wygładza, natomiast jeśli parametr 
+maleje $(<1)$, to obserwujemy pojawianie się wielu lokalnych ekstremów oraz punktów przegięcia wykresu.
+
+Sprawdzimy jeszcze, czy wybór jądra również ma tak drastyczny wpływ na estymowany kształt gęstości.
+
+<<fig=TRUE, echo=FALSE, eval=TRUE, results='asis', warning=FALSE, message=FALSE, fig.cap="Porównanie estymatorów jądrowych">>=
+hist(X, probability=T, col="lightblue", xlim=c(0,16), ylim=c(0,0.6), main=paste("Jądro gaussowskie vs Epanechnikova"), sub=paste("bw =", sr), breaks="Scott")
+lines(density(X, kernel="epanechnikov", bw=sr), col="blue")
+lines(density(X, kernel="gaussian", bw=sr), col="darkgreen")
+curve(dgamma(x, shape=k, scale=s), col="red", lwd=2, add=T)
+legend("topright", c("histogram", "est. jądrowy Epenachnikova","est. jądrowy gaussowski", "gęstość teoretyczna"), col=c("lightblue", "blue", "darkgreen", "red"), lwd=2, bg="azure2")
+
+@
+
+Różnice między estymatorami z różnymi jądrami są niemal niezauważalne. Stąd możemy wywnioskować, że zdecydowanie istotniejszym paramterem przy estymowaniu gęstości jest parametr wygładzenia $\lambda_n$.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Zdefiniowanie i badanie własności dystrybuanty empirycznej}
+Dystrybuanta empiryczna jest definiowana jako
+
+\begin{equation}
+F_n(t,\mathbf{X}) = \frac{1}{n}\sum_{i=1}^{n}\mathbbm{1}_{(-\infty, t]}(X_i).
+\end{equation}
+
+Napiszemy R-funkcję \verb+demp_plot+, która dla danego wektora $\mathbf{X}$ narysuje dystrybuantę empiryczną, dystrybuantę rozkładu normalnego $\mathcal{N}(0,\,1)$, wyznaczy odległość Kołmogorowa $D_n(\mathbf{X})$ oraz zaznaczy ją na wykresie. Do rysowania wykresu wykorzystujemy pakiet \verb+ggplot2+. 
+
+
+<<definicja_demp_plot, echo=TRUE, eval=TRUE, warning=FALSE, message=FALSE>>=
+demp_plot <- function(X,
+                      a = min(X) - 0.5,
+                      b = max(X) + 0.5,
+                      cc = "black")
+{
+  n <- length(X) #długość wektora X
+  s_poz <- sort(X) #definicja statystyki pozycyjnej
+  y1 <- 0 #zdefiniowanie pierwszej wartości y
+  V <-
+    c() #V, W1, W2 - wektory gromadzące współrzędne punktóW końcowych odcinków
+  W1 <- c()
+  W2 <- c()
+  title <- paste("Dystrybuanta empiryczna dla X, n =", toString(n))
+  M <-
+    ggplot(data =  data.frame(x = c(-a, b), y = c(-0.1, 1.1)), aes(x = x, y =
+                                                                     y))
+  for (k in c(1:(n + 1))) {
+    if (k == 1) {
+      t1 <- a
+      t2 <- s_poz[k]
+    } else if (k == n + 1) {
+      t1 <- s_poz[k - 1]
+      t2 <- b
+      V <- append(V, t1)
+      W1 <- append(W1, y1)
+      W2 <- append(W2, y1 + 1 / n)
+      y1 <- y1 + 1 / n
+    } else {
+      t1 <- s_poz[k - 1]
+      t2 <- s_poz[k]
+      V <- append(V, t1)
+      W1 <- append(W1, y1)
+      W2 <- append(W2, y1 + 1 / n)
+      y1 <- y1 + 1 / n
+    }
+    M <- M + #rysowanie linii dla jednego odcinka na wysokości i/n
+      annotate(
+        "segment",
+        x = t1,
+        xend = t2,
+        y = y1,
+        yend = y1,
+        colour = cc,
+        size = 1
+      )
+  }
+  geom_graph.1 <- data.frame(V, W1)
+  geom_graph.2 <- data.frame(V, W2)
+  M <- M + #rysowanie punktów końcowych odcinków
+    geom_point(
+      data = geom_graph.1,
+      aes(x = V, y = W1),
+      colour = cc,
+      size = 1,
+      shape = 1
+    ) +
+    geom_point(
+      data = geom_graph.2,
+      aes(x = V, y = W2),
+      colour = cc,
+      size = 1,
+      shape = 16
+    ) +
+    geom_hline(yintercept = 0,
+               color = "black",
+               linetype = "dashed") +
+    geom_hline(yintercept = 1,
+               color = "black",
+               linetype = "dashed") +
+    ggtitle(title) +
+    theme(plot.title = element_text(size = 6)) +
+    xlim(c(a, b))
+  D1 <- c() #wektory służące do wyznaczenia Dn
+  D2 <- c()
+  for (i in c(1:n)) {
+    D1 <- append(D1, i / n - pnorm(s_poz[i]))
+    D2 <- append(D2, pnorm(s_poz[i]) - (i - 1) / n)
+  }
+  Dn <- max(max(D1), max(D2)) #zdefiniowanie Dn
+  if (Dn %in% D1) {
+    #zaznaczenie Dn na wykresie
+    k <- which(sapply(
+      D1,
+      FUN = function(X)
+        Dn %in% X
+    ))
+    M <-
+      M + geom_point(
+        aes(x = s_poz[k], y = k / n),
+        colour = "blue",
+        shape = 16,
+        size = 1
+      ) +
+      annotate(
+        "segment",
+        x = s_poz[k],
+        xend = s_poz[k],
+        y = (k) / n,
+        yend = pnorm(s_poz[k]),
+        colour = "blue",
+        size = 1,
+        alpha = 0.6
+      )
+  } else {
+    k <- which(sapply(
+      D2,
+      FUN = function(X)
+        Dn %in% X
+    ))
+    M <-
+      M + geom_point(
+        aes(x = s_poz[k], y = (k - 1) / n),
+        colour = "blue",
+        shape = 16,
+        size = 1
+      ) +
+      annotate(
+        "segment",
+        x = s_poz[k],
+        xend = s_poz[k],
+        y = (k - 1) / n,
+        yend = pnorm(s_poz[k]),
+        colour = "blue",
+        size = 1,
+        alpha = 0.6
+      )
+  }
+  text <- paste("Dn =", toString(round(Dn, 3)))
+  annotation <- data.frame(x = c(a + abs(b - a) / 9),
+                           y = c(0.8),
+                           label = c(text))
+  M <-
+    M + geom_text(
+      data = annotation,
+      aes(x = x, y = y, label = label),
+      ,
+      color = "blue",
+      size = 2,
+      fontface = "bold"
+    ) + ylab("Fn") + xlab("x") #wyświetlenie Dn na wykresie
+  return(M)
+}
+@
+
+Wygenerujemy teraz trzy próby losowe z rozkładu normalnego. Pierwsza będzie długości $10$, druga $20$, a trzecia $50$. Korzystajmy z funkcji \verb+demp_plot+ i otrzymujemy:
+
+<<fig=TRUE, echo=FALSE, eval=TRUE, results='asis', warning=FALSE, message=FALSE, fig.cap="Porównanie dystrybuant empirycznych i teoretycznych dla n-elementowej próby">>=
+n <- 10  #10, 50, 100, 
+X <- rnorm(n) # próba losowa z rozkładu N(0,1)
+p10 <- demp_plot(X) +
+  stat_function(fun = pnorm, color=2, n = 101, args = list(mean = 0, sd = 1)) + ylab("")
+
+n <- 20  #10, 50, 100, 
+X <- rnorm(n) # próba losowa z rozkładu N(0,1)
+p20 <- demp_plot(X) +
+  stat_function(fun = pnorm, color=2, n = 101, args = list(mean = 0, sd = 1)) + ylab("")
+
+n <- 50  #10, 50, 100, 
+X <- rnorm(n) # próba losowa z rozkładu N(0,1)
+p50 <- demp_plot(X) +
+  stat_function(fun = pnorm, color=2, n = 101, args = list(mean = 0, sd = 1)) + ylab("")
+
+grid.arrange(arrangeGrob(p10, p20, ncol=1, nrow=2), 
+             arrangeGrob(p50, ncol=1, nrow=1), 
+             widths=c(1,2))
+@
+
+Zauważamy, że wraz ze zwiększeniem liczby obserwacji odległość $D_n(\mathbf{X})$ maleje. Sprawdzimy zatem zależność $D_n$ od $n$. Wyciągając z poprzednio napisanej funkcji fragment kodu odpowiedzialny za wyznaczenie $D_n$, narysujemy wykres dla badanej zależności. Weźmiemy również pod uwagę błąd pomiaru $D_n$ uzyskany doświadczalnie.
+
+<<fig=TRUE, echo=FALSE, eval=TRUE, results='asis', warning=FALSE, message=FALSE, fig.cap="Odległość Kołmogorowa i jej błąd w zależności od n">>=
+dn <- function(n) 
+{
+  M <-
+    ggplot(data =  data.frame(x = c(1, n), y = c(0, 1)), aes(x = x, y =
+                                                               y))
+  for (k in c(1:n)) {
+    D_list <- c()
+    for (i in c(1:200)) {
+      X <- rnorm(k)
+      s_poz <- sort(X)
+      D1 <- c() #wektory służące do wyznaczenia Dn
+      D2 <- c()
+      for (i in c(1:k)) {
+        D1 <- append(D1, i / k - pnorm(s_poz[i]))
+        D2 <- append(D2, pnorm(s_poz[i]) - (i - 1) / k)
+      }
+      Dn <- max(max(D1), max(D2)) #zdefiniowanie Dn
+      D_list <- append(D_list, Dn)
+    }
+    M <- M + annotate("pointrange", x = k, y = median(D_list), ymin = min(D_list), ymax = max(D_list),colour = "black", size = 0.2)
+  }
+  return(M)
+}
+dn(100) + ggtitle("Wykres zależności Dn od n dla rozkładu normalnego") + xlab("n") + ylab("Dn")
+@
+
+Widzimy, że w przybliżeniu $D_n$ wykładniczo maleje do zera. Wraz ze wzrostem $n$ maleje również błąd pomiaru.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Podsumowanie}
+Poniżej wypunktujemy najważniejsze wnioski, jakie można wyciągnąć z przeprowadzanych analiz:
+\begin{itemize}
+\item narysowanie podstawowych wykresów pozwala nam wstępnie zaobserwować zależności lub ich brak, aby następnie dogłębnie przeanalizować ewentualnie związki między cechami,
+\item analiza danych w poszczególnych grupach pozwala na dokładniejsze zbadanie problemu, uwzględniając podobieństwa i różnice w wybranych zmiennych,
+\item wybór jądra w estymatorze jądrowym ma marginalne znaczenie w przeciwieństwie do doboru parametru $\lambda_n$, który jest kluczowy dla estymowanego kształtu gęstości,
+\item wraz ze wzrostem liczby obserwacji statystyka Kołmogorowa $D_n$ znacząco maleje, aż w końcu $\lim\limits_{n \to\infty}{D_n} = 0.$
+
+\end{itemize}
+
+
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\end{document}
