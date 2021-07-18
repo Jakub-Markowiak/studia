@@ -24,4 +24,4 @@
 
 ## Dodatki
 1. Program konstruujący bootstrapowe przedziały ufności dla mediany próby.
-2. [Projekt grupowy strony do analizy danych Iris.csv](https://ti-projekt-2020.herokuapp.com)
+2. [Projekt grupowy strony do analizy danych Iris.csv](https://ti-projekt-2020.herokuapp.com) (Python, HTML, css, javascript)
