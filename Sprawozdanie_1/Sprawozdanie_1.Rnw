@@ -1,0 +1,427 @@
+\documentclass[12pt, a4paper]{article}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% dodatkowe pakiety LaTeX'a
+\usepackage[OT4]{polski}
+\usepackage[utf8]{inputenc}
+\usepackage[top=2.5cm, bottom=2.5cm, left=2cm, right=2cm]{geometry}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage[colorlinks=true, linkcolor=blue]{hyperref}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ustawienia globalne
+<<ustawienia_globalne, echo=FALSE, warning=FALSE, message=FALSE>>=
+library(knitr)
+library(xtable) #pakiet do tworzenia tabel w formacie LaTeX'a
+library(ggplot2)
+library(kableExtra) # formatowanie tabel
+library(dplyr)
+library(wrapr)
+library(WVPlots)
+library(gridExtra)
+
+opts_chunk$set(fig.path='figure/', fig.align='center', fig.pos='H',fig.width=5, fig.height=4)
+# UWAGA: w razie potrzeby można zmieniać te ustawienia w danym chunk'u!
+@
+
+
+\begin{document}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% strona tytulowa
+\title{Sprawozdanie 1}
+\author{Jakub Markowiak \\ album 255705}
+\maketitle
+\tableofcontents
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Krótki opis zagadnienia}
+
+W tym sprawozdaniu przeprowadzimy analizę opisową danych \verb+churn+, zawierających informacje o klientach pewnej sieci komórkowej. Zajmiemy się również interpretacją otrzymanych wyników oraz spróbujemy scharakteryzować grupę klientów, którzy zrezygnowali z usług tej sieci.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Opis eksperymentów/analiz}
+
+Przeprowadzimy następujące analizy i eksperymenty:
+\begin{enumerate}
+  \item analiza opisowa danych \verb+churn+ - zastosowanie wskaźników sumarycznych, wykresów oraz zbadanie zależności między zmiennymi,
+	\item analiza opisowa danych \verb+churn+ z podziałem na grupy.
+\end{enumerate}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Wyniki}
+
+Rozpoczynamy od wczytania danych z pliku \verb+churn.txt+ oraz zliczenia liczby obserwacji, liczby cech jakościowych i ilościowych oraz sprawdzenia, czy w danych występują brakujące wartości. Ponieważ cecha \verb+Phone+ służy jako identyfikator, usuwamy ją przed dalszą analizą. Zmienna \verb+Area.Code+ została odczytana jako zmienna ilościowa, zatem konwertujemy ją do typu \verb+"factor"+.  
+
+<<tabela1, echo=FALSE, eval=TRUE, results='asis'>>=
+data <- read.csv(file = "churn.txt", stringsAsFactors = TRUE)
+data <- data[-4]
+data$Area.Code <- as.factor(data$Area.Code)
+
+#Przeniesienie "churn" do obszaru roboczego
+attach(data)
+
+#Przejrzenie danych
+View(data)
+#Sprawdzenie, czy zgadzają się typy zmiennych
+type.Plan <- class(Int.l.Plan)
+type.AreaCode <- class(Area.Code)
+type.State <- class(State)
+
+#Sprawdzenie liczby cech
+liczba.cech <- ncol(data)
+#Sprawdzenie liczby obserwacji
+liczba.obserwacji <- nrow(data)
+
+#Sprawdzenie, jakiego typu są dane zmienne
+id.numeric <- which(sapply(data, is.numeric))
+id.factor <- which(sapply(data, is.factor))
+
+#Liczba cech ilościowych
+liczba.cech.ilo <- dim(cbind(id.numeric))[1]
+
+#Liczba cech jakościowych
+liczba.cech.jako <- dim(cbind(id.factor))[1]
+
+#Zliczenie brakujących rekordów
+na.sum <- sum(is.na(data))
+
+#Narysowanie tabeli z wynikami
+wyniki <- data.frame(
+  a = c(liczba.cech),
+  b = c(liczba.obserwacji),
+  c = c(liczba.cech.ilo),
+  d = c(liczba.cech.jako),
+  e = c(na.sum)
+)
+colnames(wyniki) <-
+  c(
+    "Liczba cech",
+    "Liczba obserwacji",
+    "Cechy ilościowe",
+    "Cechy jakościowe",
+    "Brakujące wartości"
+  )
+rownames(wyniki) <- c("")
+tab1 <-
+  xtable(
+    wyniki,
+    digits = 3,
+    include.rownames = FALSE,
+    row.names = FALSE,
+    caption = "Wstępne spojrzenie na dane",
+    label = "tab:tabela_1"
+  )
+print(tab1, type = "latex", table.placement = "H")
+@
+
+Widzimy, że w danych nie występują brakujące obserwacje. Następnie wyznaczymy podstawowe statystyki opisowe dla cech \verb+Day.Mins+,\verb+Eve.Mins+,\verb+Night.Mins+ oraz \verb+CustServ.Calls+. Zdefiniujemy funkcję \verb+my.summary+ działającą analogicznie do domyślnego \verb+summary+.
+
+<<definicja_dwoch_funkcji, echo=TRUE, eval=TRUE>>=
+#Zdefiniowanie funkcji wyznaczającej podstawowe wskaźniki sumaryczne
+my.summary <- function(x)
+{
+  wskazniki <- c(
+    Srednia = mean(x, na.rm = T),
+    Mediana = median(x, na.rm = T),
+    IQR = IQR(x, na.rm = T),
+    Min = min(x, na.rm = T),
+    Maks = max(x, na.rm = T),
+    Odch.stand. = sd(x, na.rm = T),
+    Rozstep = max(x, na.rm = T) - min(x, na.rm = T)
+  )
+  return(wskazniki)
+}
+@
+
+Wykorzystując tę funkcję sporządzamy tabelę zawierającą podstawowe wskaźniki sumaryczne.
+
+<<tabela2, echo=FALSE, eval=TRUE,  results='asis'>>=
+#Narysowanie tabeli dla czterech wybranych cech ilościowych
+nazwy.wskaznikow <- names(my.summary(Day.Mins))
+nazwy.zmiennych <-
+  c("Day.Mins", "Day.Calls", "Day.Charge", "CustServ.Calls")
+Day.Mins.summary <- as.vector(my.summary(Day.Mins))
+Day.Calls.summary <- as.vector(my.summary(Day.Calls))
+Day.Charge.summary <- as.vector(my.summary(Day.Charge))
+CustServ.Calls.summary <- as.vector(my.summary(CustServ.Calls))
+summary.matrix <-
+  rbind(Day.Mins.summary,
+        Day.Calls.summary,
+        Day.Charge.summary,
+        CustServ.Calls.summary)
+row.names(summary.matrix) <- nazwy.zmiennych
+colnames(summary.matrix) <- nazwy.wskaznikow
+
+#Wyświetlenie tabeli w sprawozdaniu
+print(
+  summary.matrix %>% kbl(
+    caption = "Podstawowe wskaźniki sumaryczne",
+    digits = 2,
+    position = "h"
+  ) %>% kable_styling(),
+  table.placement = "H"
+)
+@
+
+Możemy zauważyć, że zmienna \verb+Day.Mins+ przyjmuje wartości z zakresu $\left[0; 350,8\right]$, a przedział typowych wartości to $\left[125,31; 234,25\right]$. Podobnie dla \verb+Day.Calls+ przedziałem typowych wartości jest $\left[80,37; 120,51\right]$.
+
+Teraz wykonamy histogramy oraz wykresy pudełkowe dla tych zmiennych. Widzimy, że te zmienne mają rozkłady zbliżone do symetrycznych oraz kształtem przypominają gęstość rozkładu normalnego. Możemy też dostrzec, że zmienne te przyjmują wartości z szerokiego zakresu. Największą zmiennością charakteryzują się zmienne \verb+Day.Mins+ oraz \verb+Day.Charge+.
+
+<<histogramy, echo=FALSE, eval=TRUE, out.height='4in', results='asis'>>=
+#Narysowanie 3 histogramów i 3 wykresów pudełkowych dla Day.Mins, Day.Calls i Day.Charge
+par(mfrow = c(2, 3))
+hist(Day.Mins,
+     main = "Hist. Day.Mins",
+     col = "lightblue",
+     xlab = "Day.Mins")
+hist(Day.Calls,
+     main = "Hist. Day.Calls",
+     col = "lightgreen",
+     xlab = "Day.Calls")
+hist(Day.Charge,
+     main = "Hist. Day.Charge",
+     col = "lightyellow",
+     xlab = "Day.Charge")
+boxplot(Day.Mins, main = "Day.Mins", col = "lightblue", ylab = "Day.Mins")
+boxplot(Day.Calls, main = "Day.Calls", col = "lightgreen", ylab = "Day.Calls")
+boxplot(Day.Charge, main = "Day.Charge", col = "lightyellow", ylab = "Day.Charge")
+par(mfrow = c(1, 1))
+@
+
+Spoglądając natomiast na diagram słupkowy cechy \verb+CustServ.Calls+ obserwujemy, że rozkład tej zmiennej jest prawostronnie skośny.
+
+<<slupkowy_custserv, echo=FALSE, eval=TRUE, out.height='4in', results='asis'>>=
+#Wyświetlenie diagramu słupkowego dla CustServ.Calls
+barplot(
+  table(CustServ.Calls),
+  main = "Diagram słupkowy CustServ.Calls",
+  col = rainbow(20),
+  xlab = "CustServ.Calls",
+  ylab = "liczności"
+)
+grid()
+@
+
+Wykonamy teraz wykresy rozrzutu dla badanych cech. Widzimy, że istnieje liniowa zależność między długością prowadzenia rozmów, a opłatą za korzystanie z usług.
+
+<<pairplot, echo=FALSE, eval=TRUE, out.height='4in', results='asis'>>=
+#Wykresy rozrzutu dla 4 wybranych cech jakościowych
+PairPlot(
+  data,
+  c("Day.Mins", "Day.Calls", "Day.Charge", "CustServ.Calls"),
+  "Wykresy rozrzutu dla wybranych cech",
+  point_color = "lightgreen"
+)
+@
+
+Sprawdzimy również, jak często klienci korzystają z planu międzynarodowego oraz rezygnują z usług firmy.
+<<wykresy_slupkowe, echo=FALSE, eval=TRUE, out.height='4in', results='asis'>>=
+#Wykresy słupkowe dla Int.l.Plan i Churn.
+par(mfrow = c(1, 2))
+barplot(
+  table(Int.l.Plan) / liczba.obserwacji,
+  main = "Int.l.Plan",
+  col = c("lightblue", "lightgreen"),
+  ylab = "częstości"
+)
+barplot(
+  table(Churn.) / liczba.obserwacji,
+  main = "Churn.",
+  col = c("lightblue", "lightgreen"),
+  ylab = "częstości"
+)
+
+par(mfrow = c(1, 1))
+@
+
+Około $10\%$ zbadanych klientów korzysta z planu międzynarodowego, a około $17\%$ osób zrezygnowało z usług tej firmy.
+
+Zajmiemy się teraz analizą opisową z podziałem na dwie grupy - klientów, którzy odeszli oraz tych, którzy wciąż korzystają z usług firmy.
+
+<<podzial_na_grupy, echo=FALSE, eval=TRUE, results='asis'>>=
+#Narysowanie tabeli wyświetlające wskaźniki sumaryczne wg grupy
+wskazniki <- by(data = Day.Mins, INDICES = Churn., my.summary)
+tabela <- rbind(wskazniki$False., wskazniki$True.)
+row.names(tabela) <- c("Zostal", "Zrezygnowal")
+tabela <-
+  tabela %>% kbl(format = "latex",
+                 digits = 2,
+                 caption = "Porównanie wskaźników sumarycznych cechy Day.Mins dla dwóch grup klientów") %>% kable_styling()
+print(tabela, type = "latex", table.placement = "H")
+@
+
+Wstępnie zauważamy, że osoby, które zrezygnowały z usług firmy częściej rozmawiały przez telefon w ciągu dnia.
+
+Wykonamy wykresy pudełkowe dla \verb+Day.Mins+ oraz \verb+CustServ.Calls+ z podziałem na te dwie grupy.
+<<porownanie_w_daymins, echo=FALSE, eval=TRUE, results='asis'>>=
+#Wykres podełkowy i histogram dla Day.Mins z podziałem wg Churn.
+par(mfrow = c(1, 2), cex = 0.6)
+boxplot(
+  Day.Mins ~ Churn.,
+  main = "Boxplot Day.Mins vs Churn.",
+  col = c("lightblue", "lightgreen"),
+  xlab = "Churn.",
+  ylab = "Day.Mins"
+)
+
+zakres <- range(Day.Mins)
+col.false <- rgb(0.68, 0.85, 0.90, 0.5)
+col.true  <- rgb(0, 1, 0, 0.5, 0.3)
+hist(
+  Day.Mins[Churn. == "False."],
+  xlab = "Day.Mins (w zalezności od Churn.)",
+  xlim = zakres,
+  prob = T,
+  col = col.false,
+  main = "Histogram Day.Mins vs Churn."
+)
+hist(Day.Mins[Churn. == "True."],
+     prob = T,
+     col = col.true,
+     add = T)
+legend(
+  "topleft",
+  title = "Churn.",
+  fill = c(col.false, col.true),
+  legend = levels(Churn.)
+)
+
+@
+
+Narysujemy również wykres mozaikowy dla cechy \verb+CustServ.Calls+ oraz wykres częstości dla \verb+Int.l.Plan+.
+
+<<porownanie_z_custserv, echo=FALSE, eval=TRUE, results='asis', message=FALSE>>=
+#Przerobienie danych pod wykres mozaikowy
+d1 <- data %>%
+  group_by(Churn., CustServ.Calls) %>%
+  summarise(count = n()) %>%
+  mutate(perc = count / sum(count))
+
+#Wyświetlenie wykresu mozaikowego
+p1 <- ggplot(d1, aes(
+  x = factor(CustServ.Calls),
+  y = count,
+  fill = factor(Churn.)
+)) +
+  geom_bar(position = "fill",
+           stat = "identity",
+           width = 0.7) +
+  labs(x = "CustServ.Calls", y = "percent", fill = "Churn") +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "none") +
+  scale_fill_manual(values = c(False. = "lightblue", True. = "lightgreen")) +
+  labs(subtitle = "CustServ.Calls vs Churn.")
+
+#Przerobienie danych pod wykres mozaikowy
+d2 <- data %>%
+  group_by(Churn., Int.l.Plan) %>%
+  summarise(count = n()) %>%
+  mutate(perc = count / sum(count))
+
+#Wyświetlenie wykresu mozaikowego
+p2 <- ggplot(d2, aes(
+  x = factor(Int.l.Plan),
+  y = count,
+  fill = factor(Churn.)
+)) +
+  geom_bar(position = "fill",
+           stat = "identity",
+           width = 0.7) +
+  labs(x = "Int.l.Plan", y = "percent", fill = "Churn") +
+  theme_minimal(base_size = 14) +
+  scale_fill_manual(values = c(False. = "lightblue", True. = "lightgreen")) +
+  labs(subtitle = "Int.l.Plan vs Churn.")
+
+grid.arrange(p1, p2, ncol=2,top="Wykresy mozaikowe")
+@
+
+Osoby, które kontaktowały się z biurem obsługi klienta cztery lub więcej razy rezygnowały z usług w około $50\%$ przypadków. Spośrób osób, które korzystały z planu międzynarodowego około $45\%$ zrezygnowało.
+
+Widzimy zatem, że cechami, które dobrze mogą scharakteryzować osoby rezygnujące z usług, są \verb+Day.Mins+, \verb+Int.l.Plan+ oraz \verb+CustServ.Calls+. Wykonamy zatem wykres rozrzutu dla \verb+Day.Mins+ i \verb+CustServ.Calls+ z zaznaczeniem klientów rezygnujących.
+
+<<porownanie_z_custserv_daymins, echo=FALSE, eval=TRUE, results='asis', message=FALSE>>=
+#Porównanie Churn. z CustServ.Calls i Day.Mins
+ggplot(data) +
+  geom_point(aes(
+    x = Day.Mins,
+    y = CustServ.Calls,
+    colour = Churn. == "True."
+  )) +
+  scale_colour_manual(name = 'Churn.', values = setNames(c('lightgreen', 'lightblue'), c(T, F))) +
+  xlab('Day.Mins') + ylab('CustServ.Calls') +
+  geom_vline(
+    xintercept = c(180, 280),
+    linetype = "dashed",
+    color = c("red", "blue")
+  ) +
+  geom_hline(yintercept = 3.5,
+             linetype = "dashed",
+             color = "red") +
+  labs(title = "Wykres rozrzutu",
+       subtitle = "CustServ.Calls i Day.Mins vs Churn.") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5))
+
+
+detach(data)
+@
+
+Osoby, które rozmawiają w ciągu dnia krócej, ale często kontaktują się z biurem obsługi klienta oraz osoby, które rozmawiają dłużej, najczęściej rezygnują z usług firmy. Przeanalizujmy zatem te dwie grupy. Pierwsza grupa to klienci, którzy rozmawiają dzienne przez mniej niż 180 minut i skontaktowali się z biurem obsługi klienta co najmniej 4 razy. Druga grupa to klienci, którzy rozmawiali przez ponad 260 minut. Zauważamy, że w obu grupach znajduje się około $52\%$ wszystkich przypadków rezygnacji. 
+
+<<zliczenie_przypadkow, echo=FALSE, eval=TRUE, results='asis', message=FALSE>>=
+#Wyznaczenie podzbiorów dla kolejno zdefiniowanych grup
+k.1 <-
+  subset(data, Day.Mins <= 180 &
+           CustServ.Calls >= 4) # 65% Churn = True
+k.2 <- subset(data, Day.Mins >= 260) # 55% Churn = True
+
+#Zliczenie obserwacji w obu podgrupach i przeliczenie, ile % osób w tych grupach zrezygnowało
+k.1.odeszli <- count(subset(k.1, Churn. == "True."))
+k.1.zostali <- count(subset(k.1, Churn. == "False."))
+k.1.procent <- k.1.odeszli / (k.1.odeszli + k.1.zostali)
+
+k.2.odeszli <- count(subset(k.2, Churn. == "True."))
+k.2.zostali <- count(subset(k.2, Churn. == "False."))
+k.2.procent <- k.2.odeszli / (k.2.odeszli + k.2.zostali)
+
+wszyscy.odeszli <- count(subset(data, Churn. == "True."))
+procent.odeszli <-
+  (k.1.odeszli + k.2.odeszli) / wszyscy.odeszli # Rozpatrujemy 52% wszystkich przypadków odejścia
+
+#Przedstawienie wynikóW na wykresie
+a <- data.frame(a = c(k.1.procent * 100),
+                b = c(k.2.procent * 100))
+rownames(a) <- "zrezygnowało ($\\%$)"
+a <- a %>%
+  kable(
+    caption = "Podział na dwie grupy",
+    position = 'h',
+    col.names = c(
+      "Day.Mins $\\leq 180$, CustServ.Calls $\\geq 4$",
+      "Day.Mins $\\geq 260$"
+    ),
+    escape = FALSE
+  ) %>%
+  kable_styling()
+print(a, type = "latex")
+@
+
+Widzimy, że w prawdopodobieństwo rezygnacji klientów z grupy 1 to aż $75\%$, a w grupie 2 wynosi ono $55\%$. 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Podsumowanie}
+Poniżej wypunktujemy najważniejsze wnioski, jakie można wyciągnąć z przeprowadzanych analiz:
+\begin{itemize}
+\item wyznaczenie wskaźników sumarycznych oraz narysowanie podstawowych wykresów pozwala nam wstępnie zaobserwować zależności lub ich brak, aby następnie dogłębnie przeanalizować ewentualnie związki między cechami,
+\item klienci tej firmy najczęściej korzystają z rozmów w ciągu dnia, rzadko są zainteresowani planem międzynarodowym oraz rzadko kontaktują się z biurem obsługi klienta,
+\item klienci tej firmy nie są zadowoleni z kontaktów z biurem obsługi klienta, ale niezadowoleni są również najczęściej rozmawiający w ciągu dnia klienci oraz klienci korzystający z planu międzynarodowego,
+\item aby zmniejszyć prawdopodobieństwo odejścia klienta z firmy można poprawić jakość usług świadczonych przez biuro obsługi klienta, zaproponować zniżkę osobom korzystającym z usług przez ponad 260 minut w ciągu dnia oraz poprawić działanie planu międzynarodowego.
+\end{itemize}
+
+
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\end{document}

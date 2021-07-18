@@ -1,0 +1,1549 @@
+\documentclass[12pt, a4paper]{article}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% dodatkowe pakiety LaTeX'a
+\usepackage[OT4]{polski}
+\usepackage[utf8]{inputenc}
+\usepackage[top=2.5cm, bottom=2.5cm, left=2cm, right=2cm]{geometry}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage[colorlinks=true, linkcolor=blue]{hyperref}
+\usepackage{bbm}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ustawienia globalne
+<<ustawienia_globalne, echo=FALSE, warning=FALSE, message=FALSE>>=
+library(fpc)
+library(cluster)
+library(DataExplorer)
+library(knitr)
+library(kableExtra)
+library(dplyr)
+library(ggplot2)
+library(grid)
+library(gridExtra)
+library(ggpubr)
+library(reshape2)
+library(xtable) #pakiet do tworzenia tabel w formacie LaTeX'a
+library(RColorBrewer)
+library(MASS)
+library(rlist)
+library(purrr)
+library(tidyr)
+library(GGally)    # grafika ggplot
+library(corrplot)  # funkcja corrplot
+library(ggfortify) # funkcja autoplot
+library(plotly) #grafika 3D
+library(webshot) #użycie grafiki z plotly w .pdf
+library(mlbench)
+library(rpart)
+library(rpart.plot)
+library(e1071)
+library(adabag)
+library(ipred)
+library(randomForest)
+library(PReMiuM)
+library(factoextra)
+library(mclust) # potrzebne dla model-based clustering
+library(clValid)
+library(dendextend)
+
+opts_chunk$set(fig.path='figure/', fig.align='center', fig.pos='H',fig.width=7, fig.height=4)
+set.seed(2718)
+# UWAGA: w razie potrzeby można zmieniać te ustawienia w danym chunk'u!
+@
+
+
+\begin{document}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% strona tytulowa
+\title{Sprawozdanie 4}
+\author{Jakub Markowiak \\ album 255705}
+\maketitle
+\tableofcontents
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Krótki opis zagadnienia}
+
+W tym sprawozdaniu będziemy kontynuować porównywanie metod klasyfikacji dla danych \verb+Glass+ z pakietu \verb+mlbench+. Tym razem, w celu poprawienia dokładności klasyfikacji, wykorzystamy algorytmy bagging, boosting oraz random forest, a następnie postaramy się rozstrzygnąć, który poradził sobie najlepiej z naszym zagadnieniem. Następnie zastosujemy metody analizy skupień, również dla danych \verb+Glass+, oraz porównamy algorytmy k-means, PAM, AGNES i DIANA w celu wyłonienia najbardziej optymalnego. Postaramy się również wybrać optymalną liczbę skupień, a następnie zinterpretować otrzymany podział na klastry.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Opis eksperymentów/analiz}
+
+Przeprowadzimy następujące analizy i eksperymenty:
+\begin{enumerate}
+  \item porównanie metod klasyfikacji dla danych \verb+Glass+ z pakietu \verb+mlbench+ (cd.),
+  \item ocena oraz porównanie jakości grupowania dla różnych algorytmów analizy skupień.
+  
+\end{enumerate}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Wyniki}
+
+%%%%%%%%%%%%%
+
+\subsection{Porównanie metod klasyfikacji dla danych Glass z pakietu mlbench cd.}
+
+Porównywanie metod klasyfikacji będziemy kontynuować wykorzystując dane \verb+Glass+, które zawierają informacje o współczynniku załamania światła oraz zawartości poszczególnych pierwiastków chemicznych dla badanych szkieł. Tak jak poprzednio przygotowujemy zbiór uczący i zbiór testowy (w proporcji $2:1$).
+
+<<A1, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Wczytane dane">>=
+data(Glass)
+df <- Glass
+attach(df)
+
+labels <- df$Type
+levels <- levels(labels)
+K <- length(levels(labels))
+
+#Sprawdzenie liczby cech
+liczba.cech <- ncol(df)
+#Sprawdzenie liczby obserwacji
+liczba.obserwacji <- nrow(df)
+
+#Sprawdzenie, jakiego typu są dane zmienne
+id.numeric <- which(sapply(df, is.numeric))
+id.factor <- which(sapply(df, is.factor))
+
+#Liczba cech ilościowych
+liczba.cech.ilo <- dim(cbind(id.numeric))[1]
+
+#Liczba cech jakościowych
+liczba.cech.jako <- dim(cbind(id.factor))[1]
+
+#Zliczenie brakujących rekordów
+na.sum <- sum(is.na(df))
+@
+
+<<A2, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Podział na zbiór uczący i testowy">>=
+set.seed(1234)
+v <- as.vector(c(rep(TRUE,2/3*nrow(df)),rep(FALSE,1/3*nrow(df)))) #wektor 2/3 x TRUE, 1/3 x FALSE
+ind <- sample(v) # wymieszanie TRUE i FALSE
+df.learn <- df[ind, ] # zbiór uczący
+df.test <- df[!ind, ] # zbiór testowy
+
+learn.1 <- nrow(subset(df.learn, Type == "1"))
+learn.2 <- nrow(subset(df.learn, Type == "2"))
+learn.3 <- nrow(subset(df.learn, Type == "3"))
+learn.5 <- nrow(subset(df.learn, Type == "5"))
+learn.6 <- nrow(subset(df.learn, Type == "6"))
+learn.7 <- nrow(subset(df.learn, Type == "7"))
+
+test.1 <- nrow(subset(df.test, Type == "1"))
+test.2 <- nrow(subset(df.test, Type == "2"))
+test.3 <- nrow(subset(df.test, Type == "3"))
+test.5 <- nrow(subset(df.test, Type == "5"))
+test.6 <- nrow(subset(df.test, Type == "6"))
+test.7 <- nrow(subset(df.test, Type == "7"))
+
+#Rysowanie tabeli
+tab <- data.frame(x = c(nrow(df.learn), 
+                   learn.1,
+                   learn.2,
+                   learn.3,
+                   learn.5,
+                   learn.6,
+                   learn.7), 
+             y = c(nrow(df.test), 
+                   test.1,
+                   test.2,
+                   test.3,
+                   test.5,
+                   test.6,
+                   test.7))
+
+tab <- as.data.frame(t(tab))
+rownames(tab) <- c("learn set", "test set")
+colnames(tab) <- c("l. obserwacji", "1", "2", "3","5","6","7")
+
+tab <- xtable(tab, caption = "Podział na zbiór uczący i testowy")
+print(tab, type = "latex", table.placement = "H", include.rownames=TRUE, row.names = TRUE, col.names = TRUE, sanitize.text.function=function(x){x})
+@
+
+Za klasyfikator bazowy będzie nam służyło najlepsze drzewo klasyfikacyjne skonstruowane w poprzednim sprawozdaniu.
+
+<<A3, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Drzewo klasyfikacyjne dla danych Glass">>=
+
+model <- Type ~ Ba + Mg + K + Ca + Na + Al + RI
+
+Glass.tree.complex <- rpart(model, data=df.learn, cp=.01, minsplit=5, maxdepth=20)
+
+#plotcp(Glass.tree.complex)
+cp.def <- Glass.tree.complex$cptable[which.min(Glass.tree.complex$cptable[,"xerror"]),"CP"]
+
+Glass.tree.simple <- rpart(model, data=df.learn, control=rpart.control(cp = cp.def))
+
+rpart.plot(Glass.tree.simple, main="Drzewo klasyfikacyjne dla danych Glass")
+
+my.predict  <- function(model, newdata) predict(model, newdata=newdata, type="class")
+my.ipredtree <- function(formula1, data1, cpdef) rpart(formula=formula1, data=data1, control=rpart.control(cp = cpdef))
+
+####### 5-CV
+
+dk.blad.cv <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.ipredtree, predict=my.predict, 
+           estimator="boot", est.para=control.errorest(nboot = 50), cp=cp.def)$error
+
+####### Bootstrap
+
+dk.blad.boot <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.ipredtree, predict=my.predict, 
+            estimator="boot", est.para=control.errorest(nboot = 50), cp=cp.def)$error
+
+####### .632+
+
+dk.blad.632 <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.ipredtree, predict=my.predict, 
+            estimator="632plus", est.para=control.errorest(nboot = 50), cp=cp.def)$error
+
+labels.real <- df.test$Type
+labels.predict <- predict(Glass.tree.simple, newdata=df.test, type = "class")
+tab <- table(labels.predict,labels.real)
+accuracy.test.dk <- sum(diag(as.matrix(tab)))/length(labels.real)
+
+tab <- tab %>%
+  kable(caption = "Macierz pomyłek dla zbioru testowego (dk)", position='h') %>%
+  kable_styling()
+tab <- add_header_above(tab,c("Rzeczywiste etykietki","Prognozowane etkietki"=6))
+print(tab)
+
+tab.dk <- data.frame(c(dk.blad.cv,dk.blad.boot,dk.blad.632,1-accuracy.test.dk))
+tab.dk <- as.data.frame(t(tab.dk))
+
+colnames(tab.dk) <- c("5-cv","bootstrap", ".632+", "predykcje na zb. testowym")
+rownames(tab.dk) <- c("błąd klasyfikacji (dk)")
+
+dk.bledy <- c(dk.blad.cv, dk.blad.boot, dk.blad.632, 1 - accuracy.test.dk)
+
+tab <- xtable( tab.dk, digits = 3, include.rownames=FALSE, row.names = FALSE, caption = paste("Błędy klasyfikacji dla drzewa klas."), label = "tab:tabela_dk")
+print(tab, type = "latex", table.placement = "H")
+@
+
+Analizę przeprowadzimy w celu porównania następujących metod:
+\begin{enumerate}
+  \item bagging,
+  \item boosting,
+  \item random forest.
+\end{enumerate}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\paragraph{Metoda bagging}\mbox{}\\
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Rozpoczniemy od metody \textbf{bagging}. Najpierw spróbujemy wyłonić optymalną liczbę replikacji \verb+B+.
+
+<<A4, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Błąd w zależności od B">>=
+
+#na zbiorze uczącym, bez zmiennych o najgorszych zdolnościach
+set.seed(1223)
+B.vector <- c(1, 5, 10, 20, 30, 40, 50, 100)
+bagging.error.rates <- sapply(B.vector, function(b)  {errorest( Type ~ Ba + Mg + K + Ca + Na + Al + RI, data=df.learn, model=bagging, nbagg=b, estimator="632plus", est.para=control.errorest(nboot = 20))$error})
+plot(B.vector, bagging.error.rates, xlab="B", main="Bagging: error rate vs. B", type="b")
+grid()
+@
+
+Widzimy, że optymalną wartością \verb+B+ jest $20$. Przeprowadzimy zatem bagging dla $20$ replikacji.
+
+<<A5, echo=FALSE, eval=TRUE, results='asis', message=FALSE, warning=FALSE, fig.cap="Błąd w zależności od B">>=
+set.seed(1234)
+B <- 20
+
+start.time <- Sys.time()
+btree <- bagging(model, data=df.learn, nbagg=B, minsplit=1, cp=0) #skonstruowany w oparciu o zbiór uczący
+end.time <- Sys.time()
+
+bagging.time <- end.time - start.time
+bagging.time <- round(as.numeric(bagging.time), 6) #zmierzony czas wykonania funkcji bagging [s]
+
+# btree
+
+my.predict  <- function(model, newdata) 
+{ as.factor(predict(model, newdata=newdata, type="class")) }
+
+my.bagging <- function(formula, data) 
+{ bagging(formula=formula,data=data, nbagg=B, minsplit=1, cp=0)} 
+
+### 5-cross validation
+
+blad.cv <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.bagging, predict=my.predict, 
+            estimator="cv", est.para=control.errorest(k = 5))
+
+### Bootstrap
+
+blad.boot <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.bagging, predict=my.predict, 
+            estimator="boot", est.para=control.errorest(nboot = 50))
+
+### .632+
+
+blad.632 <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.bagging, predict=my.predict, 
+            estimator="632plus", est.para=control.errorest(nboot = 50))
+
+### Macierz pomyłek:
+
+pred.labels <- predict(btree, newdata=df.test, type="class")
+real.labels <- df.test$Type
+confusion.matrix <- table(pred.labels, real.labels) # dla zbioru testowego
+
+tab <- confusion.matrix %>%
+  kable(caption = "Macierz pomyłek dla zbioru testowego (bagging)", position='h') %>%
+  kable_styling()
+tab <- add_header_above(tab,c("Rzeczywiste etykietki","Prognozowane etkietki"=6))
+print(tab)
+
+accuracy.test.bagging <- sum(diag(confusion.matrix))/length(real.labels) #procent poprawnie przewidzianych etykietek
+
+bagging.bledy <- c(blad.cv$error, blad.boot$error, blad.632$error, 1 - accuracy.test.bagging)
+
+tab <- data.frame(bagging.bledy)
+tab <- as.data.frame(t(tab))
+
+colnames(tab) <- c("5-cv","bootstrap", ".632+", "predykcje na zb. testowym")
+rownames(tab) <- c("błąd klasyfikacji (bagging)")
+
+tab <- xtable( tab, digits = 3, include.rownames=FALSE, row.names = FALSE, caption = paste("Ocena dokładności klasyfikacji"), label = "tab:tabela_knn")
+print(tab, type = "latex", table.placement = "H")
+@
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\paragraph{Metoda boosting (AdaBoost)}\mbox{}\\
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Skonstruujemy teraz rodzinę klasyfikatorów z wykorzystaniem metody Adaptive Boosting. Ustalamy liczbę potwórzeń jako $100$.
+
+<<A7, echo=FALSE, eval=TRUE, results='asis', message=FALSE, warning=FALSE, fig.cap="Macierz pomyłek dla zbioru testowego(boosting)">>=
+
+start.time <- Sys.time()
+boost <- boosting(model, data=df.learn, boos=TRUE, mfinal=30) #skonstruowany w oparciu o zbiór uczący
+end.time <- Sys.time()
+
+boosting.time <- end.time - start.time
+boosting.time <- round(as.numeric(boosting.time), 6) #zmierzony czas wykonania funkcji bagging [s]
+
+# btree
+
+my.predict  <- function(model, newdata) 
+{ as.factor(predict(model, newdata=newdata, type="class")$class) }
+
+my.boosting <- function(formula, data) 
+{ boosting(formula=formula,data=data, boos=TRUE, mfinal=30)}
+
+### 5-cross validation
+
+blad.cv <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.boosting, predict=my.predict, 
+            estimator="cv", est.para=control.errorest(k = 5))
+
+### Bootstrap
+
+blad.boot <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.boosting, predict=my.predict, 
+            estimator="boot", est.para=control.errorest(nboot = 20))
+
+### .632+
+
+blad.632 <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.boosting, predict=my.predict, 
+            estimator="632plus", est.para=control.errorest(nboot = 20))
+
+### Macierz pomyłek:
+
+real.labels <- df.test$Type
+pred <- predict(boost, df.test)
+confusion.matrix <- pred$confusion
+
+
+tab <- confusion.matrix %>%
+  kable(caption = "Macierz pomyłek dla zbioru testowego (boosting)", position='h') %>%
+  kable_styling()
+tab <- add_header_above(tab,c("Rzeczywiste etykietki","Prognozowane etkietki"=6))
+print(tab)
+
+accuracy.test.boosting <- 1 - pred$error #procent poprawnie przewidzianych etykietek
+
+boosting.bledy <- c(blad.cv$error, blad.boot$error, blad.632$error, 1 - accuracy.test.boosting)
+
+tab <- data.frame(boosting.bledy)
+tab <- as.data.frame(t(tab))
+
+colnames(tab) <- c("5-cv","bootstrap", ".632+", "predykcje na zb. testowym")
+rownames(tab) <- c("błąd klasyfikacji (boosting)")
+
+tab <- xtable( tab, digits = 3, include.rownames=FALSE, row.names = FALSE, caption = paste("Ocena dokłądności klasyfikacji"), label = "tab:tabela_knn")
+print(tab, type = "latex", table.placement = "H")
+@
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\paragraph{Metoda Random Forest}\mbox{}\\
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+<<A8, echo=FALSE, eval=TRUE, results='asis', message=FALSE, warning=FALSE,  fig.cap="Błąd klasyfikacji w zależności od liczby drzew.">>=
+set.seed(1234)
+
+p <-  ncol(Glass) - 1
+
+W <- c(1:10)*10
+
+rf.error.rates <- sapply(W, function(b)  {errorest( Type ~ Ba + Mg + K + Ca + Na + Al + RI, data=df.learn, model=randomForest, ntree=b, estimator="632plus", est.para=control.errorest(nboot = 50))$error})
+plot(W, rf.error.rates, xlab="ntree", main="RandomForest: error rate vs. ntree", type="b")
+grid()
+@
+
+Ustalamy liczbę drzew jako $50$.
+
+<<A9, echo=FALSE, eval=TRUE, results='asis', message=FALSE, warning=FALSE, fig.cap="Błąd klasyfikacji w zależności od liczby losowo wybranych cech">>=
+set.seed(1234)
+W <- c(1:8)
+
+rf.error.rates <- sapply(W, function(b)  {errorest( Type ~ Ba + Mg + K + Ca + Na + Al + RI, data=df, model=randomForest, ntree=50, mtry=b, estimator="632plus", est.para=control.errorest(nboot = 50))$error})
+plot(W, rf.error.rates, xlab="mtry", main="RandomForest: error rate vs. mtry", type="b")
+grid()
+@
+
+Ustalamy liczbę losowo wybranych cech jako $3$.
+
+<<A10ab, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Błąd klasyfikacji w zależności od liczby losowo wybranych cech">>=
+t.opt = 50
+p.opt = 3
+
+start.time <- Sys.time()
+rf <- randomForest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, data=df.learn, ntree=t.opt, mtry=p.opt, importance=TRUE) #skonstruowany w oparciu o zbiór uczący
+end.time <- Sys.time()
+
+rf.time <- end.time - start.time
+rf.time <- round(as.numeric(rf.time), 6) #zmierzony czas wykonania funkcji bagging [s]
+
+# btree
+
+my.predict  <- function(model, newdata) 
+{ predict(model, newdata=newdata, type="class") }
+
+my.randomForest <- function(formula, data) 
+{ randomForest(formula=formula,data=data, ntree = t.opt, mtry = p.opt, importance = TRUE)} 
+
+### 5-cross validation
+
+blad.cv <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.randomForest, predict=my.predict, 
+            estimator="cv", est.para=control.errorest(k = 5))
+
+### Bootstrap
+
+blad.boot <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.randomForest, predict=my.predict, 
+            estimator="boot", est.para=control.errorest(nboot = 50))
+
+### .632+
+
+blad.632 <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.randomForest, predict=my.predict, 
+            estimator="632plus", est.para=control.errorest(nboot = 50))
+
+### Macierz pomyłek:
+
+pred.labels <- predict(rf, newdata=df.test, type="class")
+real.labels <- df.test$Type
+confusion.matrix <- table(pred.labels, real.labels) # dla zbioru testowego
+
+tab <- confusion.matrix %>%
+  kable(caption = "Macierz pomyłek dla zbioru testowego (randomForest)", position='h') %>%
+  kable_styling()
+tab <- add_header_above(tab,c("Rzeczywiste etykietki","Prognozowane etkietki"=6))
+print(tab)
+
+accuracy.test.randomForest <- sum(diag(confusion.matrix))/length(real.labels) #procent poprawnie przewidzianych etykietek
+
+rf.bledy <- c(blad.cv$error, blad.boot$error, blad.632$error, 1 - accuracy.test.randomForest)
+
+tab <- data.frame(rf.bledy)
+tab <- as.data.frame(t(tab))
+
+colnames(tab) <- c("5-cv","bootstrap", ".632+", "predykcje na zb. testowym")
+rownames(tab) <- c("błąd klasyfikacji (randomForest)")
+
+tab <- xtable( tab, digits = 3, include.rownames=FALSE, row.names = FALSE, caption = paste("Ocena dokładności klasyfikacji"), label = "tab:tabela_bladklasyfikacji")
+print(tab, type = "latex", table.placement = "H")
+@
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%
+\paragraph{Porównanie wyników}\mbox{}\\
+%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Porównajmy teraz otrzymane wyniki i sprawdźmy, czy zastosowanie rodzin klasyfikatorów zauważalnie zredukowały błąd klasyfikacji.
+
+<<A10, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Porównanie dokładności klasyfikacji">>=
+###Tabela błędów
+
+tab.new <- data.frame(c(dk.bledy),
+            c(bagging.bledy),
+            c(boosting.bledy),
+            c(rf.bledy))
+
+tab.new <- as.data.frame(t(tab.new))
+
+colnames(tab.new) <- c("5-cv","bootstrap", ".632+", "predykcje na zb. testowym")
+rownames(tab.new) <- c("1 drzewo" , "bagging", "boosting", "randomForest")
+
+tab <- xtable(tab.new, digits = 3, include.rownames=FALSE, row.names = FALSE, caption = paste("Błąd klasyfikacji dla analizowanych modeli"), label = "tab:tabela_porownanie1")
+print(tab, type = "latex", table.placement = "H")
+@
+
+Zauważamy, że zastosowanie rodzin klasyfikatorów znacznie zredukowało błąd klasyfikacji. Przyjrzyjmy się jeszcze błędom względnym.
+
+<<A11, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Porównanie jakości klasyfikacji (błąd względny)">>=
+###Tabela błędów względnych
+
+bagging.wzgl <- (dk.bledy - bagging.bledy)/dk.bledy * 100
+boosting.wzgl <- (dk.bledy - boosting.bledy)/dk.bledy * 100
+rf.wzgl <- (dk.bledy - rf.bledy)/dk.bledy * 100
+
+tab.new <- data.frame(c(bagging.wzgl),
+            c(boosting.wzgl),
+            c(rf.wzgl))
+
+tab.new <- as.data.frame(t(tab.new))
+
+colnames(tab.new) <- c("5-cv","bootstrap", ".632+", "predykcje na zb. testowym")
+rownames(tab.new) <- c("bagging", "boosting", "randomForest")
+
+tab <- xtable(tab.new, digits = 3, include.rownames=FALSE, row.names = FALSE, caption = paste("Błąd klasyfikacji dla analizowanych modeli (względem 1 drzewa) [\\%]"), label = "tab:tabela_porownanie2")
+print(tab, type = "latex", table.placement = "H")
+
+
+@
+
+Widzimy, że najlepiej wypadł algorytm \verb+RandomForest+. Sprawdzimy jeszcze jedno kryterium -- czas potrzebny na skonstruowanie modelu.
+
+<<A12, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Porównanie jakości klasyfikacji">>=
+### Porównanie czasu konstrukcji modelu
+
+tab.new <- data.frame(c(bagging.time, boosting.time, rf.time))
+tab.new <- as.data.frame(t(tab.new))
+
+colnames(tab.new) <- c("Bagging","Boosting", "randomForest")
+rownames(tab.new) <- c("czas konstruowania modelu [s]")
+
+tab <- xtable(tab.new, digits = 3, include.rownames=FALSE, row.names = FALSE, caption = paste("Czas konstruowania modelu [s]"), label = "tab:tabela_porownanie3")
+print(tab, type = "latex", table.placement = "H")
+@
+
+Wyraźnie więcej czasu zajmuje realizacja jednej funkcji \verb+boosting+. Wnioskujemy stąd, że rodzina klasyfikatorów skonstruowana metodą \verb+RandomForest+ jest najlepsza spośród badanej trójki -- skonstruowany model charakteryzuje się najniższym błędem klasyfikacji oraz najkrótszym czasem realizacji.
+Korzystając z metody \verb+RandomForest+ sporządzimy teraz rankng cech.
+
+<<A13, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Ranking ważności cech">>=
+### Porównanie czasu konstrukcji modelu
+rf1 <- randomForest(Type ~ ., data=df.learn, ntree=t.opt, mtry=p.opt, importance=TRUE) #skonstruowany w oparciu o zbiór uczący
+varImpPlot(rf1,main = "Ranking ważności cech")
+@
+
+Przypomnijmy, że wykorzystując jedynie metody analizy opisowej wytypowaliśmy żelazo \verb+Fe+ oraz potas \verb+Si+ jako zmienne o najgorszych zdolnościach dyskryminacyjnych. Ranking ważności cech potwierdził jedynie wysnute wcześniej wnioski.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Zastosowanie metody wektorów nośnych}
+%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Wykorzystamy teraz metodę wektorów nośnych w celu skonstruowania klasyfikatora dla jądra liniowego. Sprawdzimy najpierw, jak na błąd klasyfikacji wpływa parametr \verb+C+.
+
+<<B1, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Błąd klasyfikacji w zależności od parametru C">>=
+set.seed(1234)
+
+C.range <- 2^((-4):4)
+
+linear.tune <- tune(svm, train.x=df.learn[,c(1, 2, 3, 4, 6, 7, 8)],
+                    train.y=df.learn[,"Type"],
+                    kernel="linear", ranges=list(cost=C.range))
+
+plot(linear.tune, xlab="C", main="SVM (linear): error rate vs. C")
+
+C <- as.numeric(linear.tune$best.parameters)
+@
+
+Widzimy, że optymalną wartością C dla jądra liniowego jest \Sexpr{C}.
+
+<<B2, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Błąd klasyfikacji w zależności od parametru C">>=
+set.seed(1234)
+
+
+my.predict  <- function(model, newdata) 
+{ predict(model, newdata=newdata, type="class") }
+
+my.svm <- function(formula, data) 
+{ svm(formula=formula,data=data, kernel = "linear", cost = C)} 
+
+svm.linear.C <- svm(Type ~ Ba + Mg + K + Ca + Na + Al + RI, data=df.learn, kernel="linear", cost=C)
+
+
+### 5-CV
+
+blad.cv <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.svm, predict=my.predict, 
+            estimator="cv", est.para=control.errorest(k = 5))
+
+### Bootstrap
+
+blad.boot <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.svm, predict=my.predict, 
+            estimator="boot", est.para=control.errorest(nboot = 50))
+
+### .632+
+
+blad.632 <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.svm, predict=my.predict, 
+            estimator="632plus", est.para=control.errorest(nboot = 50))
+
+### Macierz pomyłek:
+
+pred.labels <- predict(svm.linear.C, newdata=df.test, type="class")
+real.labels <- df.test$Type
+confusion.matrix <- table(pred.labels, real.labels) # dla zbioru testowego
+
+tab <- confusion.matrix %>%
+  kable(caption = "Macierz pomyłek dla zbioru testowego (SVM (linear))", position='h') %>%
+  kable_styling()
+tab <- add_header_above(tab,c("Rzeczywiste etykietki","Prognozowane etkietki"=6))
+print(tab)
+
+accuracy.test.SVM.linear <- sum(diag(confusion.matrix))/length(real.labels) #procent poprawnie przewidzianych
+
+
+SVM.linear.bledy <- c(blad.cv$error, blad.boot$error, blad.632$error, 1 - accuracy.test.SVM.linear)
+
+tab <- data.frame(SVM.linear.bledy)
+tab <- as.data.frame(t(tab))
+
+colnames(tab) <- c("5-cv","bootstrap", ".632+", "predykcje na zb. testowym")
+rownames(tab) <- c("błąd klasyfikacji (SVM (linear))")
+
+tab <- xtable( tab, digits = 3, include.rownames=FALSE, row.names = FALSE, caption = paste("Ocena jakości klasyfikacji"), label = "tab:tabela_svm_linear")
+print(tab, type = "latex", table.placement = "H")
+@
+
+Widzimy, że otrzymaliśmy gorsze wyniki w porównaniu z np. metodą \verb+RandomForest+. Sprawdzimy, jakie wyniki otrzymamy przy zastosowaniu innego jądra -- rozpoczniemy od jądra wielomianowego (polynomial).
+
+<<B3, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Błąd klasyfikacji w zależności od parametru C">>=
+set.seed(1234)
+
+C.range <- c(0.1, 0.2, 0.5, 10, 20, 30, 40, 50, 60, 80, 100, 120)
+
+polynomial.tune <- tune(svm, train.x=df.learn[,c(1, 2, 3, 4, 6, 7, 8)],
+                    train.y=df.learn[,"Type"],
+                    kernel="polynomial", ranges=list(cost=C.range))
+
+plot(polynomial.tune, xlab="C", main="SVM (polynomial): error rate vs. C")
+
+C <- as.numeric(polynomial.tune$best.parameters)
+@
+
+Widzimy, że optymalną wartością C dla jądra wielomianowego jest \Sexpr{C}.
+
+<<B4, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Błąd klasyfikacji w zależności od parametru C">>=
+set.seed(1234)
+
+
+my.predict  <- function(model, newdata) 
+{ predict(model, newdata=newdata, type="class") }
+
+my.svm <- function(formula, data) 
+{ svm(formula=formula,data=data, kernel = "polynomial", cost = C)} 
+
+svm.polynomial.C <- svm(Type ~ Ba + Mg + K + Ca + Na + Al + RI, data=df.learn, kernel="polynomial", cost=C)
+
+
+### 5-CV
+
+blad.cv <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.svm, predict=my.predict, 
+            estimator="cv", est.para=control.errorest(k = 5))
+
+### Bootstrap
+
+blad.boot <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.svm, predict=my.predict, 
+            estimator="boot", est.para=control.errorest(nboot = 50))
+
+### .632+
+
+blad.632 <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.svm, predict=my.predict, 
+            estimator="632plus", est.para=control.errorest(nboot = 50))
+
+### Macierz pomyłek:
+
+pred.labels <- predict(svm.polynomial.C, newdata=df.test, type="class")
+real.labels <- df.test$Type
+confusion.matrix <- table(pred.labels, real.labels) # dla zbioru testowego
+
+tab <- confusion.matrix %>%
+  kable(caption = "Macierz pomyłek dla zbioru testowego (SVM (polynomial))", position='h') %>%
+  kable_styling()
+tab <- add_header_above(tab,c("Rzeczywiste etykietki","Prognozowane etkietki"=6))
+print(tab)
+
+accuracy.test.SVM.polynomial <- sum(diag(confusion.matrix))/length(real.labels) #procent poprawnie przewidzianych
+
+
+SVM.polynomial.bledy <- c(blad.cv$error, blad.boot$error, blad.632$error, 1 - accuracy.test.SVM.polynomial)
+
+tab <- data.frame(SVM.polynomial.bledy)
+tab <- as.data.frame(t(tab))
+
+colnames(tab) <- c("5-cv","bootstrap", ".632+", "predykcje na zb. testowym")
+rownames(tab) <- c("błąd klasyfikacji (SVM (polynomial))")
+
+tab <- xtable( tab, digits = 3, include.rownames=FALSE, row.names = FALSE, caption = paste("Ocena jakości klasyfikacji"), label = "tab:tabela_svm_polynomial")
+print(tab, type = "latex", table.placement = "H")
+@
+
+Również otrzymaliśmy dość słabe rezultaty -- szczególnie wysoki jest błąd predykcji na zbiorze testowym. Analogicznie postępujemy dla jądra \verb+radialnego+ oraz \verb+sigmoid+.
+
+<<B5, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Błąd klasyfikacji w zależności od parametru C">>=
+set.seed(1234)
+
+C.range <- c(0.1, 0.2, 0.5, 10, 20, 30, 40, 50, 60, 80, 100, 120, 240)
+
+radial.tune <- tune(svm, train.x=df.learn[,c(1, 2, 3, 4, 6, 7, 8)],
+                    train.y=df.learn[,"Type"],
+                    kernel="radial", ranges=list(cost=C.range))
+
+plot(radial.tune, xlab="C", main="SVM (radial basis): error rate vs. C")
+
+C <- as.numeric(radial.tune$best.parameters)
+C.radial <- C
+@
+
+Widzimy, że optymalną wartością C dla jądra radialnego jest \Sexpr{C}.
+
+<<B6, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Błąd klasyfikacji w zależności od parametru C">>=
+set.seed(1234)
+
+
+my.predict  <- function(model, newdata) 
+{ predict(model, newdata=newdata, type="class") }
+
+my.svm <- function(formula, data) 
+{ svm(formula=formula,data=data, kernel = "radial", cost = C)} 
+
+svm.radial.C <- svm(Type ~ Ba + Mg + K + Ca + Na + Al + RI, data=df.learn, kernel="radial", cost=C)
+
+
+### 5-CV
+
+blad.cv <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.svm, predict=my.predict, 
+            estimator="cv", est.para=control.errorest(k = 5))
+
+### Bootstrap
+
+blad.boot <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.svm, predict=my.predict, 
+            estimator="boot", est.para=control.errorest(nboot = 50))
+
+### .632+
+
+blad.632 <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.svm, predict=my.predict, 
+            estimator="632plus", est.para=control.errorest(nboot = 50))
+
+### Macierz pomyłek:
+
+pred.labels <- predict(svm.radial.C, newdata=df.test, type="class")
+real.labels <- df.test$Type
+confusion.matrix <- table(pred.labels, real.labels) # dla zbioru testowego
+
+tab <- confusion.matrix %>%
+  kable(caption = "Macierz pomyłek dla zbioru testowego (SVM (radial))", position='h') %>%
+  kable_styling()
+tab <- add_header_above(tab,c("Rzeczywiste etykietki","Prognozowane etkietki"=6))
+print(tab)
+
+accuracy.test.SVM.radial <- sum(diag(confusion.matrix))/length(real.labels) #procent poprawnie przewidzianych
+
+
+SVM.radial.bledy <- c(blad.cv$error, blad.boot$error, blad.632$error, 1 - accuracy.test.SVM.radial)
+
+tab <- data.frame(SVM.radial.bledy)
+tab <- as.data.frame(t(tab))
+
+colnames(tab) <- c("5-cv","bootstrap", ".632+", "predykcje na zb. testowym")
+rownames(tab) <- c("błąd klasyfikacji (SVM (radial))")
+
+tab <- xtable( tab, digits = 3, include.rownames=FALSE, row.names = FALSE, caption = paste("Ocena jakości klasyfikacji"), label = "tab:tabela_svm_radial")
+print(tab, type = "latex", table.placement = "H")
+@
+
+Pozostało jeszcze zbadać jądro \verb+sigmoid+.
+
+<<B7, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Błąd klasyfikacji w zależności od parametru C">>=
+set.seed(1234)
+
+C.range <- c(0.1, 0.2, 0.5, 0.9, 10, 20, 30, 40, 50, 60, 80, 100, 120)
+
+sigmoid.tune <- tune(svm, train.x=df.learn[,c(1, 2, 3, 4, 6, 7, 8)],
+                    train.y=df.learn[,"Type"],
+                    kernel="sigmoid", ranges=list(cost=C.range))
+
+plot(sigmoid.tune, xlab="C", main="SVM (sigmoid): error rate vs. C")
+
+C <- as.numeric(sigmoid.tune$best.parameters)
+@
+
+Widzimy, że optymalną wartością C dla jądra sigmoid jest \Sexpr{C}.
+
+<<B8, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Błąd klasyfikacji w zależności od parametru C">>=
+set.seed(1234)
+
+
+my.predict  <- function(model, newdata) 
+{ predict(model, newdata=newdata, type="class") }
+
+my.svm <- function(formula, data) 
+{ svm(formula=formula,data=data, kernel = "sigmoid", cost = C)} 
+
+svm.sigmoid.C <- svm(Type ~ Ba + Mg + K + Ca + Na + Al + RI, data=df.learn, kernel="sigmoid", cost=C)
+
+
+### 5-CV
+
+blad.cv <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.svm, predict=my.predict, 
+            estimator="cv", est.para=control.errorest(k = 5))
+
+### Bootstrap
+
+blad.boot <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.svm, predict=my.predict, 
+            estimator="boot", est.para=control.errorest(nboot = 50))
+
+### .632+
+
+blad.632 <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.svm, predict=my.predict, 
+            estimator="632plus", est.para=control.errorest(nboot = 50))
+
+### Macierz pomyłek:
+
+pred.labels <- predict(svm.sigmoid.C, newdata=df.test, type="class")
+real.labels <- df.test$Type
+confusion.matrix <- table(pred.labels, real.labels) # dla zbioru testowego
+
+tab <- confusion.matrix %>%
+  kable(caption = "Macierz pomyłek dla zbioru testowego (SVM (sigmoid))", position='h') %>%
+  kable_styling()
+tab <- add_header_above(tab,c("Rzeczywiste etykietki","Prognozowane etkietki"=6))
+print(tab)
+
+accuracy.test.SVM.sigmoid <- sum(diag(confusion.matrix))/length(real.labels) #procent poprawnie przewidzianych
+
+
+SVM.sigmoid.bledy <- c(blad.cv$error, blad.boot$error, blad.632$error, 1 - accuracy.test.SVM.sigmoid)
+
+tab <- data.frame(SVM.sigmoid.bledy)
+tab <- as.data.frame(t(tab))
+
+colnames(tab) <- c("5-cv","bootstrap", ".632+", "predykcje na zb. testowym")
+rownames(tab) <- c("błąd klasyfikacji (SVM (sigmoid))")
+
+tab <- xtable( tab, digits = 3, include.rownames=FALSE, row.names = FALSE, caption = paste("Ocena jakości klasyfikacji"), label = "tab:tabela_svm_sigmoid")
+print(tab, type = "latex", table.placement = "H")
+@
+
+Dla jądra sigmoid otrzymaliśmy rezultaty przypominające wyniki rzutu monetą -- błędy klasyfikacji oscylują wokół $0.5$. Porównajmy teraz ze sobą wszystkie jądra.
+
+<<B9, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Porównanie jakości klasyfikacji">>=
+###Tabela błędów
+
+tab.new <- data.frame(c(SVM.linear.bledy),
+            c(SVM.polynomial.bledy),
+            c(SVM.radial.bledy),
+            c(SVM.sigmoid.bledy))
+
+tab.new <- as.data.frame(t(tab.new))
+
+colnames(tab.new) <- c("5-cv","bootstrap", ".632+", "predykcje na zb. testowym")
+rownames(tab.new) <- c("SVM linear" , "SVM polynomial", "SVM radial", "SVM sigmoid")
+
+tab <- xtable(tab.new, digits = 3, include.rownames=FALSE, row.names = FALSE, caption = paste("Błąd klasyfikacji dla różnych jąder SVM"), label = "tab:tabela_porownanie1")
+print(tab, type = "latex", table.placement = "H")
+@
+
+Widzimy, że wybór jądra ma kluczowy wpływ na błąd klasyfikacji. Porównując jądro radialne z jądrem sigmoid widzimy, że w tym drugim wystąpił niemal dwa razy większy błąd klasyfikacji.
+
+Możemy również wysnuć wniosek, że dla naszych danych najbardziej odpowiednim jądrem jest jądro radialne. W związku z tym postaramy się ,,dostroić" otrzymany model z tym jądrem w celu zmniejszenia błędu klasyfikacji. Zoptymalizujemy w tym celu zarówno parametr \verb+C+, jak i parametr $\gamma$.
+
+
+<<B10, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Błąd klasyfikacji w zależności od parametru C oraz gamma">>=
+set.seed(1234)
+
+C.range <- c(1:50)*50
+gamma.range <- 2^((-8):1)
+
+radial.tune <- tune(svm, train.x=df.learn[,c(1, 2, 3, 4, 6, 7, 8)],
+                    train.y=df.learn[,"Type"],
+                    kernel="radial", ranges=list(cost=C.range, gamma=gamma.range))
+
+plot(radial.tune, xlab="C", main="SVM (radial basis): error rate vs. C")
+
+C <- as.numeric(radial.tune$best.parameters)
+C.radial <- C[1]
+gamma.radial <- C[2]
+@
+
+Otrzymujemy, że najlepszą parą parametrów jest C równe \Sexpr{C.radial} oraz $\gamma$ równa \Sexpr{gamma.radial}.
+
+<<B11, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Błąd klasyfikacji w zależności od parametru C">>=
+set.seed(1234)
+
+
+my.predict  <- function(model, newdata) 
+{ predict(model, newdata=newdata, type="class") }
+
+my.svm <- function(formula, data) 
+{ svm(formula=formula,data=data, kernel = "radial", cost = C.radial, gamma = gamma.radial)} 
+
+svm.radial.best.C <- svm(Type ~ Ba + Mg + K + Ca + Na + Al + RI, data=df.learn, kernel="radial", cost = C.radial, gamma = gamma.radial)
+
+
+### 5-CV
+
+blad.cv <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.svm, predict=my.predict, 
+            estimator="cv", est.para=control.errorest(k = 5))
+
+### Bootstrap
+
+blad.boot <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.svm, predict=my.predict, 
+            estimator="boot", est.para=control.errorest(nboot = 50))
+
+### .632+
+
+blad.632 <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.svm, predict=my.predict, 
+            estimator="632plus", est.para=control.errorest(nboot = 50))
+
+### Macierz pomyłek:
+
+pred.labels <- predict(svm.radial.best.C, newdata=df.test, type="class")
+real.labels <- df.test$Type
+confusion.matrix <- table(pred.labels, real.labels) # dla zbioru testowego
+
+tab <- confusion.matrix %>%
+  kable(caption = "Macierz pomyłek dla zbioru testowego (SVM (radial optimized))", position='h') %>%
+  kable_styling()
+tab <- add_header_above(tab,c("Rzeczywiste etykietki","Prognozowane etkietki"=6))
+print(tab)
+
+accuracy.test.SVM.radial.best <- sum(diag(confusion.matrix))/length(real.labels) #procent poprawnie przewidzianych
+
+
+SVM.radial.best.bledy <- c(blad.cv$error, blad.boot$error, blad.632$error, 1 - accuracy.test.SVM.radial.best)
+
+tab <- data.frame(SVM.radial.best.bledy)
+tab <- as.data.frame(t(tab))
+
+colnames(tab) <- c("5-cv","bootstrap", ".632+", "predykcje na zb. testowym")
+rownames(tab) <- c("błąd klasyfikacji (SVM (radial optimized))")
+
+tab <- xtable( tab, digits = 3, include.rownames=FALSE, row.names = FALSE, caption = paste("Ocena jakości klasyfikacji"), label = "tab:tabela_svm_radial_best")
+print(tab, type = "latex", table.placement = "H")
+@
+
+Zbadajmy teraz względny błąd klasyfikacji.
+
+<<B12, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Błąd klasyfikacji w zależności od parametru C">>=
+SVM.wzgl <- (SVM.radial.bledy - SVM.radial.best.bledy)/SVM.radial.bledy * 100
+
+tab.new <- data.frame(c(SVM.wzgl))
+
+tab.new <- as.data.frame(t(tab.new))
+
+colnames(tab.new) <- c("5-cv","bootstrap", ".632+", "predykcje na zb. testowym")
+rownames(tab.new) <- c("SVM (optimized)")
+
+tab <- xtable(tab.new, digits = 3, include.rownames=FALSE, row.names = FALSE, caption = paste("Błąd klasyfikacji dla analizowanych modeli (radial optimized względem radial) [\\%]"), label = "tab:tabela_porownanie3")
+print(tab, type = "latex", table.placement = "H")
+@
+
+Widzimy, że otrzymaliśmy zauważalnie mniejszy błąd predykcji na zbiorze testowym, a także błąd zmierzony przy użyciu metody 5 cross validation. Nieznaczne różnice pojawiły się natomiast badając błąd metodą bootstrap oraz .632+.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Ocena oraz porównanie jakości grupowania dla różnych algorytmów analizy skupień}
+%%%%%%%%%%%%%%%%%%%%%%%%%
+
+W tym segmencie, ponownie z wykorzystaniem danych \verb+Glass+ z pakietu \verb+mlbench+, weźmiemy pod lupę zagadnienie analizy skupień. Postaramy się porównać algorytmy oraz wyłonić ten, który najlepiej poradził sobie z naszymi danymi. Przygotujemy dane do analizy -- usuwamy z ramki danych zmienną grupującą \verb+Type+. Ponieważ wartości zmiennych są mierzone tą samą jednostką, nie ma potrzeby standaryzacji danych.
+
+<<C1a, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Macierz odległości dla danych Glass">>=
+data(Glass)
+df <- Glass
+attach(df)
+
+labels <- df$Type
+levels <- levels(labels)
+K <- length(levels(labels))
+
+#Sprawdzenie liczby cech
+liczba.cech <- ncol(df)
+#Sprawdzenie liczby obserwacji
+liczba.obserwacji <- nrow(df)
+
+#Sprawdzenie, jakiego typu są dane zmienne
+id.numeric <- which(sapply(df, is.numeric))
+id.factor <- which(sapply(df, is.factor))
+
+#Liczba cech ilościowych
+liczba.cech.ilo <- dim(cbind(id.numeric))[1]
+
+#Liczba cech jakościowych
+liczba.cech.jako <- dim(cbind(id.factor))[1]
+
+#Zliczenie brakujących rekordów
+na.sum <- sum(is.na(df))
+
+df.new <- df[-10] #ramka danych bez etykietek
+
+diss.matrix <- daisy(df.new, metric="euclidean") #macierz podobieństwa
+
+fviz_dist(diss.matrix, order = TRUE)
+@
+
+Analizę przeprowadzimy dla następujących algorytmów:
+\begin{enumerate}
+  \item k-means,
+  \item PAM,
+  \item AGNES,
+  \item DIANA.
+\end{enumerate}
+
+Przyjmujemy liczbę skupień jako \Sexpr{K} -- rzeczywistą liczbę klas.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\paragraph{Algorytm k-means}\mbox{}\\
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+<<C1, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="k-means - wizualizacja wyników z wykorzystaniem PCA">>=
+
+# Podział na K skupień
+k <- K
+kmeans <- kmeans(df.new,centers=k,iter.max=10, nstart=10)
+
+# Etykietki grup
+df.etykietki.kmeans <- kmeans$cluster
+
+# Wizualizacja na bazie PCA
+p.1 <- fviz_cluster(kmeans, df.new, ellipse = FALSE, geom = "point") + ggtitle("Test")
+glass.pca <- prcomp(Glass[,-10], center=T, scale=T)
+p.2 <- fviz_pca(glass.pca, label="var", habillage=Glass$Type, addEllipses=FALSE)
+
+
+df.wykres.cluster <- p.1$data
+
+df.wykres.pca <- p.2$data
+
+df.wykres.cluster$real <- df.wykres.pca$Groups
+
+p <- ggplot(df.wykres.cluster) +
+  geom_point(aes(x=x,y=y, color=cluster, shape=real, alpha=0.7)) +
+  ggtitle("k-means - porównanie skupisk z rzeczywistymi etykietami (PCA)") +
+  xlab("Dim1 (27.9%)") +
+  ylab("Dim2 (22.8%)") +
+  theme(legend.position = "bottom")
+
+p 
+
+@
+
+Otrzymaliśmy dobrze odseparowane skupiska, natomiast dość poprawnie została wykryta tylko klasa \verb+7+, a więc ta najbardziej różniąca się od pozostałych zmiennych, dla których błąd jest wyraźnie większy.
+
+<<C2, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="PAM - wizualizacja wyników z wykorzystaniem PCA">>=
+
+# Podział na K skupień
+k <- K
+pam.K <- pam(x=diss.matrix, diss=TRUE, k=K)
+
+# Etykietki grup
+df.etykietki.pam <- pam.K$clustering
+
+# Wizualizacja na bazie PCA
+p.2 <- fviz_pca(glass.pca, label="var", habillage=Glass$Type, addEllipses=FALSE)
+
+
+df.wykres.cluster <- p.2$data
+
+df.wykres.cluster$cluster <-as.factor(df.etykietki.pam)
+
+
+p <- ggplot(df.wykres.cluster) +
+  geom_point(aes(x=x,y=y, color=cluster, shape=Groups, alpha=0.7)) +
+  ggtitle("PAM - porównanie skupisk z rzeczywistymi etykietami (PCA)") +
+  xlab("Dim1 (27.9%)") +
+  ylab("Dim2 (22.8%)")+
+  theme(legend.position = "bottom")
+
+p
+
+@
+
+Ponownie otrzymujemy widocznie odseparowane skupiska z wyjątkiem klastrów \verb+2+ i \verb+3+, które wyraźnie się przenikają. Ponownie otrzymujemy dość dobre wyłonienie tylko typu \verb+7+. 
+
+Sprawdźmy teraz, jak radzą sobie metody hierarchiczne -- AGNES oraz DIANA.
+
+<<C4a, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="AGNES average linkage - dendrogram">>=
+
+agnes.avg <- agnes(x=diss.matrix,diss=TRUE, method="average")
+agnes.single <- agnes(x=diss.matrix,diss=TRUE, method="single")
+agnes.complete <- agnes(x=diss.matrix,diss=TRUE, method="complete")
+
+etykietki.kolory <- as.numeric(df$Type) # 1, 2 lub 3
+
+kolory.obiektow <- etykietki.kolory[agnes.avg$order]
+
+fviz_dend(agnes.avg, cex=0.3, k=K, label_cols=kolory.obiektow, main="AGNES average linkage - Partycja na 6 skupień vs. rzeczywiste klasy",)
+@
+
+Większość obserwacji została objęta w ramach jednego skupiska, zaledwie 13 obserwacji natomiast zostało podzielone na aż 5 grup.
+
+<<C4b, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="AGNES single linkage - dendrogram">>=
+kolory.obiektow <- etykietki.kolory[agnes.single$order]
+
+fviz_dend(agnes.single, cex=0.3, k=K, label_cols=kolory.obiektow, main="AGNES single linkage - Partycja na 6 skupień vs. rzeczywiste klasy",)
+@
+
+Otrzymaliśmy bardzo podobny dendrogram -- natomiast tym razem przed wcieleniem do najliczniejszej grupy uchroniło się jedynie 6 obserwacji.
+
+<<C4c, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="AGNES complete linkage - dendrogram">>=
+kolory.obiektow <- etykietki.kolory[agnes.complete$order]
+
+fviz_dend(agnes.complete, cex=0.3, k=K, label_cols=kolory.obiektow, main="AGNES complete linkage - Partycja na 6 skupień vs. rzeczywiste klasy",)
+#fviz_dend(agnes.avg, cex=0.4, k=K, main="Dendrogram - average linkage")
+#fviz_dend(agnes.single, cex=0.4, k=K, main="Dendrogram - average linkage")
+
+@
+
+Dendogram dla metody \verb+complete linkage+ wyraźnie różni się od poprzednich. Również mamy jedno dominujące skupisko, ale w pozostałych klastrach znalazła się zdecydowanie większa liczba obserwacji.
+
+<<C5, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="AGNES - wizualizacja wyników z wykorzystaniem PCA">>=
+agnes.complete.k.K <- cutree(agnes.complete, k=K)
+
+# Etykietki grup
+df.etykietki.pam <- pam.K$clustering
+
+# Wizualizacja na bazie PCA
+p.1 <- fviz_cluster(list(data=df.new, cluster=agnes.complete.k.K))
+p.2 <- fviz_pca(glass.pca, label="var", habillage=Glass$Type, addEllipses=FALSE)
+
+df.wykres.cluster <- p.1$data
+
+df.wykres.pca <- p.2$data
+
+df.wykres.cluster$real <- df.wykres.pca$Groups
+
+p <- ggplot(df.wykres.cluster) +
+  geom_point(aes(x=x,y=y, color=cluster, shape=real, alpha=0.7)) +
+  ggtitle("AGNES complete - porównanie skupisk z rzeczywistymi etykietami (PCA)") +
+  xlab("Dim1 (27.9%)") +
+  ylab("Dim2 (22.8%)") +
+  theme(legend.position = "bottom")
+
+p 
+
+@
+
+Również wyraźnie widać, że skupienia zostały wyraźnie odseparowane oraz tak samo jak w przypadku metod grupujących jedynie typ \verb+7+ został wyłoniony w sposób przypominający wyjściowe dane.
+
+<<C6, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="DIANA - dendrogram">>=
+
+diana <- diana(x=diss.matrix, diss=TRUE)
+
+# Odcinamy drzewo tak, aby uzyskac dokladnie K=6 klastry
+
+etykietki.kolory <- as.numeric(df$Type) # 1, 2 lub 3
+
+kolory.obiektow <- etykietki.kolory[diana$order]
+
+
+fviz_dend(diana, cex=0.3, k=K, label_cols=kolory.obiektow, main="DIANA - Partycja na 6 skupień vs. rzeczywiste klasy")
+
+
+@
+
+Dla algorytmu \verb+DIANA+ dendogram dość wyraźnie wskazuje na dominację trzech klastrów, ale ponownie tylko typ \verb+7+ został wyłoniony dość dokładnie. Podobne wnioski uzyskamy przy wizualizacji z wykorzystaniem PCA.
+
+<<C7, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="DIANA - wizualizacja wyników z wykorzystaniem PCA">>=
+diana.K <- cutree(diana,k=K) # etykietki klastrow
+
+# Etykietki grup
+
+# Wizualizacja na bazie PCA
+p.1 <- fviz_cluster(list(data=df.new, cluster=diana.K))
+p.2 <- fviz_pca(glass.pca, label="var", habillage=Glass$Type, addEllipses=FALSE)
+
+df.wykres.cluster <- p.1$data
+
+df.wykres.pca <- p.2$data
+
+df.wykres.cluster$real <- df.wykres.pca$Groups
+
+p <- ggplot(df.wykres.cluster) +
+  geom_point(aes(x=x,y=y, color=cluster, shape=real, alpha=0.7)) +
+  ggtitle("DIANA - porównanie skupisk z rzeczywistymi etykietami (PCA)") +
+  xlab("Dim1 (27.9%)") +
+  ylab("Dim2 (22.8%)") +
+  theme(legend.position = "bottom")
+
+p 
+
+@
+
+Zajmiemy się teraz oceną jakości grupowania i postaramy się wyłonić najlepszy algorytm oraz najbardziej optymalną liczbę klastrów. Wykorzystamy w tym celu wskaźniki wewnętrzne.
+
+<<C8, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.height = 7, fig.cap="Wskaźniki wewnętrzne">>=
+###  WskaĹşniki wewnÄtrzne (silhouette, Dunn, connectivity)
+
+# metody/algorytmy analizy skupieĹ
+metody <- c("kmeans", "pam", "agnes", "diana")
+
+# zakres dla liczby skupieĹ
+K.zakres <- 2:6
+
+internal.validation <- clValid(df.new, nClust=K.zakres, clMethods=metody, validation="internal")
+
+# summary(internal.validation)
+# optimalScores(internal.validation)
+
+par(mfrow = c(2, 2))
+plot(internal.validation, legend = FALSE, lwd=2)
+plot.new()
+legend("center", clusterMethods(internal.validation), col=1:9, lty=1:9, pch=paste(1:9))
+
+@
+
+Widzimy, że algorytm \verb+AGNES+ osiąga najniższą wartość wskaźnika Connectivity oraz najwyższą wartość wskaźnika Dunn'a, a także najwyższą wartość wskaźnika Silhouette dla $k \in \left\{2, 3\right\}$.
+
+<<C9, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.height = 7, fig.cap="Badanie stabilności algorytmów">>=
+stability.validation <- clValid(df.new, nClust=K.zakres, clMethods=metody, validation="stability")
+# summary(stability.validation)
+# optimalScores(stability.validation)
+
+par(mfrow = c(2,2))
+plot(stability.validation, measure=c("APN","AD","ADM"), legend=FALSE, lwd=2)
+plot.new()
+legend("center", clusterMethods(stability.validation), col=1:9, lty=1:9, pch=paste(1:9))
+@
+
+W badaniu stabilności również najlepiej wypadł algorytm \verb+AGNES+ -- ma najniższy wskaźnik APN oraz ADM. Uzyskał natomiast najwyższy wskaźnik AD, jednak, ponieważ we wszystkich pozostałych testach wypadł najlepiej, wyciągamy wniosek, że ten algorytm jest najlepszy z badanej czwórki. Wykorzystamy teraz wskaźnik zewnętrzny w celu określenie optymalnej liczby klastrów -- skorygowany wskaźnik Randa.
+
+<<C10, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.height = 4, fig.cap="Skorygowany wskaźnik Randa dla różnej liczby skupień">>=
+
+# Dla agnes.complete:
+
+# agnes.complete.k.K <- cutree(k=6)
+# agnes.complete.k.2 <- cutree(k=2)
+
+table.agnes.complete <- table(agnes.complete.k.K, df$Type)
+# matchClasses(table.agnes.complete, method="exact")
+
+### Optimando? k = 4?
+agnes.complete.k.test <- cutree(agnes.complete, k=4)
+
+
+# AGNES
+
+K = c(2:6)
+Rand.agnes.complete <- function(x){
+  agnes.complete.function <- cutree(agnes.complete, k=x)
+  Rand.Index <- adjustedRandIndex(agnes.complete.function, df$Type)
+  return(Rand.Index)
+}
+
+K.agnes.complete <- sapply(K, Rand.agnes.complete)
+
+Rand.agnes.avg <- function(x){
+  agnes.avg.function <- cutree(agnes.avg, k=x)
+  Rand.Index <- adjustedRandIndex(agnes.avg.function, df$Type)
+  return(Rand.Index)
+}
+
+K.agnes.avg <- sapply(K, Rand.agnes.avg)
+
+Rand.agnes.single <- function(x){
+  agnes.single.function <- cutree(agnes.single, k=x)
+  Rand.Index <- adjustedRandIndex(agnes.single.function, df$Type)
+  return(Rand.Index)
+}
+
+K.agnes.single <- sapply(K, Rand.agnes.single)
+
+# PAM
+
+Rand.pam <- function(x){
+  pam.function <-  pam(x=diss.matrix, diss=TRUE, k=x)$cluster
+  Rand.Index <- adjustedRandIndex(pam.function, df$Type)
+  return(Rand.Index)
+}
+
+K.pam <- sapply(K, Rand.pam)
+
+# DIANA
+
+Rand.diana <- function(x){
+  diana.function <-  diana(x=diss.matrix, diss=TRUE)
+  diana.function <- cutree(diana.function,k=x)
+  Rand.Index <- adjustedRandIndex(diana.function, df$Type)
+  return(Rand.Index)
+}
+
+K.diana <- sapply(K, Rand.diana)
+
+# K-means
+
+Rand.kmeans <- function(x){
+  diana.function <-  kmeans(df.new,centers=x,iter.max=10, nstart=10)$cluster
+  Rand.Index <- adjustedRandIndex(diana.function, df$Type)
+  return(Rand.Index)
+}
+
+K.kmeans <- sapply(K, Rand.kmeans)
+
+### Wykresy
+
+ggplot(data = data.frame(x=c(0,6), y=c(0,1))) +
+  ylab("Adjusted Rand Index") +
+  xlab("K (liczba skupień)") +
+  geom_point(data = data.frame(K = K, K.kmeans = K.kmeans), aes(x=K, y=K.kmeans, color = "kmeans")) +
+  geom_line(data = data.frame(K = K, K.kmeans = K.kmeans), aes(x=K, y=K.kmeans, color = "kmeans")) +
+  geom_point(data = data.frame(K = K, K.diana = K.diana), aes(x=K, y=K.diana, color = "diana")) +
+  geom_line(data = data.frame(K = K, K.diana = K.diana), aes(x=K, y=K.diana, color = "diana")) +  
+  geom_point(data = data.frame(K = K, K.pam = K.pam), aes(x=K, y=K.pam, color = "pam")) +
+  geom_line(data = data.frame(K = K, K.pam = K.pam), aes(x=K, y=K.pam, color = "pam")) +  
+  geom_point(data = data.frame(K = K, K.agnes.complete = K.agnes.complete), aes(x=K, y=K.agnes.complete, color = "agnes.complete")) +
+  geom_line(data = data.frame(K = K, K.agnes.complete = K.agnes.complete), aes(x=K, y=K.agnes.complete, color = "agnes.complete")) +  
+  geom_point(data = data.frame(K = K, K.agnes.avg = K.agnes.avg), aes(x=K, y=K.agnes.avg, color = "agnes.avg")) +
+  geom_line(data = data.frame(K = K, K.agnes.avg = K.agnes.avg), aes(x=K, y=K.agnes.avg, color = "agnes.avg")) +  
+  geom_point(data = data.frame(K = K, K.agnes.single = K.agnes.single), aes(x=K, y=K.agnes.single, color = "agnes.single")) +
+  geom_line(data = data.frame(K = K, K.agnes.single = K.agnes.single), aes(x=K, y=K.agnes.single, color = "agnes.single")) +  
+  scale_colour_manual(name="Algorytm",
+        values=c(kmeans="black", diana = "blue", pam = "red", agnes.complete = "darkgreen", agnes.avg = "green", agnes.single = "lightgreen")) +
+  ggtitle("Skorygowany wskaźnik Randa") +
+  theme(legend.position = "bottom")
+@
+
+Dla algorytmu \verb+AGNES (complete)+ widzimy duży wzrost wskaźnika Randa dla liczby skupień równej 4. Porównując z wynikami otrzymanymi z użyciem wskaźników wewnętrznych możemy wywnioskować, że to właśnie liczba klastrów równa 4 jest dobrym kompromisem (nieznaczny wzrost wskaźników Connectivity, ADM, APN, a także maleje wskaźnik AD oraz wskaźnik Dunna, jednak wciąż jest on najwyższy spośród badanych algorytmów).
+
+<<C11, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.height = 7, fig.cap="Własności skupisk">>=
+K = 4
+# grupujące
+kmeans.2 <- kmeans(df.new,centers=K,iter.max=10, nstart=10)
+
+wskazniki.kmeans <- cluster.stats(diss.matrix, kmeans.2$cluster)
+diam.kmeans <- wskazniki.kmeans$max.diameter
+separation.kmeans <- wskazniki.kmeans$min.separation
+c.sizes.kmeans <- wskazniki.kmeans$cluster.size
+
+tab.kmeans <- c(diam.kmeans, separation.kmeans, c.sizes.kmeans)
+
+pam.2 <- pam(x=diss.matrix, diss=TRUE, k=K)
+wskazniki.pam <- cluster.stats(diss.matrix, pam.2$clustering)
+diam.pam <- wskazniki.pam$max.diameter
+separation.pam <- wskazniki.pam$min.separation
+c.sizes.pam <- wskazniki.pam$cluster.size
+
+tab.pam <- c(diam.pam, separation.pam, c.sizes.pam)
+
+# hierarchiczne
+
+agnes.complete <- agnes(x=diss.matrix,diss=TRUE, method="complete")
+agnes.complete.k.2 <- cutree(agnes.complete, k=K)
+
+wskazniki.agnes <- cluster.stats(diss.matrix, agnes.complete.k.2)
+diam.agnes <- wskazniki.agnes$max.diameter
+separation.agnes <- wskazniki.agnes$min.separation
+c.sizes.agnes <- wskazniki.agnes$cluster.size
+
+tab.agnes <- c(diam.agnes, separation.agnes, c.sizes.agnes)
+
+diana <- diana(x=diss.matrix, diss=TRUE)
+diana.2 <- cutree(diana, k=K)
+
+wskazniki.diana <- cluster.stats(diss.matrix, diana.2)
+diam.diana <- wskazniki.diana$max.diameter
+separation.diana <- wskazniki.diana$min.separation
+c.sizes.diana <- wskazniki.diana$cluster.size
+
+tab.diana <- c(diam.diana, separation.diana, c.sizes.diana)
+
+
+df.tab <- data.frame(tab.kmeans, 
+                     tab.pam,
+                     tab.agnes,
+                     tab.diana)
+
+colnames(df.tab) <- c("K-MEANS", "PAM", "AGNES", "DIANA")
+rownames(df.tab) <- c("diameter", "separation", "size C.1", "size C.2", "size C.3", "size C.4")
+
+tab <- xtable::xtable(df.tab, caption = "Własności skupisk, k = 4")
+
+print(tab, type = "latex", table.placement = "H", include.rownames=TRUE, row.names = TRUE, col.names = TRUE, sanitize.text.function=function(x){x})
+@
+
+Ostatecznie wyciągnęliśmy wniosek, że najbardziej optymalnym algorytmem jest \verb+AGNES (complete)+ z liczbą klastrów 4. Zwizualizujmy wyniki dla tego algorytmu przy użyciu metody PCA oraz sporządzając dendrogram. 
+
+<<C12, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.height = 4, fig.cap="AGNES - wizualizacja wyników z wykorzystaniem PCA, K = 4">>=
+K = 4
+
+agnes.complete.k.K <- cutree(agnes.complete, k=K)
+
+# Wizualizacja na bazie PCA
+p.1 <- fviz_cluster(list(data=df.new, cluster=agnes.complete.k.K))
+
+df.wykres.cluster <- p.1$data
+
+
+p <- ggplot(df.wykres.cluster) +
+  geom_point(aes(x=x,y=y, color=cluster, alpha=0.7)) +
+  ggtitle("AGNES complete - skupiska dla K = 4") +
+  xlab("Dim1 (27.9%)") +
+  ylab("Dim2 (22.8%)") +
+  theme(legend.position = "bottom")
+
+p 
+@
+
+<<C13, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.height = 4, fig.cap="AGNES - wizualizacja wyników z wykorzystaniem dendogramu, K = 4">>=
+fviz_dend(agnes.complete, cex=0.2, k=K, main="AGNES complete - partycja na 4 skupienia")
+@
+
+Spróbujmy teraz scharakteryzować obserwacje, które znalazły się w kolejnych skupieniach.
+
+<<C14, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.height = 8, fig.cap="Nowa ramka danych - wykresy pudełkowe">>=
+
+df.new.cluster <- df.new # nowa ramka danych
+df.new.cluster$cluster <- as.factor(agnes.complete.k.K)
+
+p11 <- ggplot(df.new.cluster, aes(x = RI , fill = cluster)) +
+  geom_boxplot(alpha = 0.5) +
+  ggtitle("Boxplot RI")
+
+p12 <- ggplot(df.new.cluster, aes(x = Na , fill = cluster)) +
+  geom_boxplot(alpha = 0.5) +
+  ggtitle("Boxplot Na")
+
+p13 <- ggplot(df.new.cluster, aes(x = Mg , fill = cluster)) +
+  geom_boxplot(alpha = 0.5) +
+  ggtitle("Boxplot Mg")
+
+p21 <- ggplot(df.new.cluster, aes(x = Al , fill = cluster)) +
+  geom_boxplot(alpha = 0.5) +
+  ggtitle("Boxplot Al")
+
+p22 <- ggplot(df.new.cluster, aes(x = Si , fill = cluster)) +
+  geom_boxplot(alpha = 0.5) +
+  ggtitle("Boxplot Si")
+
+p23 <- ggplot(df.new.cluster, aes(x = K , fill = cluster)) +
+  geom_boxplot(alpha = 0.5) +
+  ggtitle("Boxplot K") +
+  coord_cartesian(xlim = c(0,2))
+
+p31 <- ggplot(df.new.cluster, aes(x = Ca , fill = cluster)) +
+  geom_boxplot(alpha = 0.5) +
+  ggtitle("Boxplot Ca")
+
+p32 <- ggplot(df.new.cluster, aes(x = Ba , fill = cluster)) +
+  geom_boxplot(alpha = 0.5) +
+  ggtitle("Boxplot Ba") +
+  coord_cartesian(xlim = c(0,3))
+
+p33 <- ggplot(df.new.cluster, aes(x = Fe , fill = cluster)) +
+  geom_boxplot(alpha = 0.5) +
+  ggtitle("Boxplot Fe") +
+  coord_cartesian(xlim = c(0,0.3))
+
+ggarrange(p11, p12, p13, p21, p22, p23, p31, p32, p33, ncol=2, nrow=5, common.legend = TRUE, legend="bottom")
+
+
+@
+
+<<C15, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.height = 8, fig.cap="Nowa ramka danych - wykresy gęstości">>=
+
+df.new.cluster <- df.new # nowa ramka danych
+df.new.cluster$cluster <- as.factor(agnes.complete.k.K)
+
+p11 <- ggplot(df.new.cluster, aes(x = RI , fill = cluster)) +
+  geom_density(alpha = 0.5) +
+  ggtitle("Density RI")
+
+p12 <- ggplot(df.new.cluster, aes(x = Na , fill = cluster)) +
+  geom_density(alpha = 0.5) +
+  ggtitle("Density Na")
+
+p13 <- ggplot(df.new.cluster, aes(x = Mg , fill = cluster)) +
+  geom_density(alpha = 0.5) +
+  ggtitle("Density Mg")
+
+p21 <- ggplot(df.new.cluster, aes(x = Al , fill = cluster)) +
+  geom_density(alpha = 0.5) +
+  ggtitle("Density Al")
+
+p22 <- ggplot(df.new.cluster, aes(x = Si , fill = cluster)) +
+  geom_density(alpha = 0.5) +
+  ggtitle("Density Si")
+
+p23 <- ggplot(df.new.cluster, aes(x = K , fill = cluster)) +
+  geom_density(alpha = 0.5) +
+  ggtitle("Density K") +
+  coord_cartesian(xlim = c(0,1.5))
+
+p31 <- ggplot(df.new.cluster, aes(x = Ca , fill = cluster)) +
+  geom_density(alpha = 0.5) +
+  ggtitle("Density Ca")
+
+p32 <- ggplot(df.new.cluster, aes(x = Ba , fill = cluster)) +
+  geom_density(alpha = 0.5) +
+  ggtitle("Density Ba") +
+  coord_cartesian(xlim = c(0,3))
+
+p33 <- ggplot(df.new.cluster, aes(x = Fe , fill = cluster)) +
+  geom_density(alpha = 0.5) +
+  ggtitle("Density Fe") +
+  coord_cartesian(xlim = c(0,0.1))
+
+ggarrange(p11, p12, p13, p21, p22, p23, p31, p32, p33, ncol=2, nrow=5, common.legend = TRUE, legend="bottom")
+
+
+@
+
+<<C16, echo=FALSE, eval=TRUE, results='asis', message=FALSE, warning=FALSE,  fig.height = 4, fig.cap="Nowa ramka danych - macierze korelacji">>=
+df.1 <- subset(df.new.cluster, cluster=="1")
+p11 <- ggcorr(df.1[, c(1:9)]) + 
+  ggtitle("Cluster 1")
+
+df.2 <- subset(df.new.cluster, cluster=="2")
+p12 <- ggcorr(df.2[, c(1:9)]) + 
+  ggtitle("Cluster 2")
+
+
+df.3 <- subset(df.new.cluster, cluster=="3")
+p21 <- ggcorr(df.3[, c(1:9)]) + 
+  ggtitle("Cluster 3")
+
+df.4 <- subset(df.new.cluster, cluster=="4")
+p22 <- ggcorr(df.4[, c(1:9)]) + 
+  ggtitle("Cluster 4")
+
+ggarrange(p11, p12, p21, p22, ncol=2, nrow=2, common.legend = TRUE, legend="bottom")
+
+@
+
+<<C17, echo=FALSE, eval=TRUE, results='asis', message=FALSE, warning=FALSE,  fig.height = 5, fig.cap="Nowa ramka danych - PCA">>=
+cluster.pca <- prcomp(df.new.cluster[,-10], center=T, scale=T)
+
+p <- fviz_pca(cluster.pca, label="var", habillage=df.new.cluster$cluster, addEllipses=TRUE, ellipse.level=0.95, title="Nowa ramka danych - dwuwykres na bazie PCA")
+p + scale_color_brewer(palette="Dark2")
+@
+
+Spoglądając na powyższe wykresy, możemy wyciągnąć następujące wnioski dotyczące uzyskanych skupisk:
+\begin{enumerate}
+  \item typ 1 charakteryzuje się większą zawartością magnezu oraz mniejszą zawartością baru,
+  \item typ 2 charakteryzuje się większą zawartością wapienia oraz wyższym współczynnikiem załamania (a także wysoką korelacją między tymi dwiema cechami) oraz niższą zawartością krzemu, 
+  \item typ 3 charakteryzuje się niską korelacją pomiędzy zawartością wapienia oraz współczynnikiem załamania, wysoką korelacją pomiędzy zawartością wapienia i potasu oraz zawartością sodu i magnezu, a także wysoką zawartością baru oraz potasu,
+  \item typ 4 charakteryzuje się dużą zawartością baru i krzemu, niewielką zawartością potasu oraz większą zawartością glinu niż pozostałe typy.
+\end{enumerate}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Podsumowanie}
+Poniżej wypunktujemy najważniejsze wnioski, jakie można wyciągnąć z przeprowadzanych analiz:
+\begin{itemize}
+\item najlepszym algorytmem rodzin klasyfikatorów dla naszych danych okazał się być \verb+RandomForest+ -- najlepiej zwiększył dokładność klasyfikacji oraz najkrócej trwa realizacja jednego użycia funkcji,
+\item korzystając z metody wektorów nośnych, wybór jądra ma kluczowy wpływ na dokładność klasyfikacji,
+\item dostrojenie modelu uzyskanego metodą wektorów nośnych pozwala na zauważalne zmniejszenie błędu klasyfikacji,
+\item w zagadnieniu analizy skupień wykorzystanie wskaźników wewnętrznych i zewnętrznych pozwoliło na wybór optymalnej liczby klastrów oraz najlepszego algorytmu,
+\item klastry uzyskane z wykorzystaniem metod analizy skupień znacznie różniły się od grup w wyjściowych danych.
+\end{itemize}
+
+
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\end{document}

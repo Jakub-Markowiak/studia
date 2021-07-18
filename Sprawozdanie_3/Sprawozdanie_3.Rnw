@@ -1,0 +1,1300 @@
+\documentclass[12pt, a4paper]{article}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% dodatkowe pakiety LaTeX'a
+\usepackage[OT4]{polski}
+\usepackage[utf8]{inputenc}
+\usepackage[top=2.5cm, bottom=2.5cm, left=2cm, right=2cm]{geometry}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage[colorlinks=true, linkcolor=blue]{hyperref}
+\usepackage{bbm}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ustawienia globalne
+<<ustawienia_globalne, echo=FALSE, warning=FALSE, message=FALSE>>=
+library(cluster)
+library(DataExplorer)
+library(knitr)
+library(kableExtra)
+library(dplyr)
+library(ggplot2)
+library(grid)
+library(gridExtra)
+library(ggpubr)
+library(arules)
+library(reshape2)
+library(xtable) #pakiet do tworzenia tabel w formacie LaTeX'a
+library(RColorBrewer)
+library("car")
+library(MASS)
+library(rlist)
+library(purrr)
+library(tidyr)
+library(GGally)    # grafika ggplot
+library(corrplot)  # funkcja corrplot
+library(ggfortify) # funkcja autoplot
+library(plotly) #grafika 3D
+library(webshot) #użycie grafiki z plotly w .pdf
+library(datasets)
+library(mlbench)
+library(ipred)
+library(factoextra)
+library(rpart)
+library(rpart.plot)
+library(e1071)
+
+opts_chunk$set(fig.path='figure/', fig.align='center', fig.pos='H',fig.width=7, fig.height=4)
+set.seed(2718)
+# UWAGA: w razie potrzeby można zmieniać te ustawienia w danym chunk'u!
+@
+
+
+\begin{document}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% strona tytulowa
+\title{Sprawozdanie 3}
+\author{Jakub Markowiak \\ album 255705}
+\maketitle
+\tableofcontents
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Krótki opis zagadnienia}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Opis eksperymentów/analiz}
+
+Przeprowadzimy następujące analizy i eksperymenty:
+\begin{enumerate}
+  \item klasyfikacja na bazie modelu regresji liniowej,
+  \item porównanie metod klasyfikacji dla danych \verb+Glass+ z pakietu \verb+mlbench+.
+\end{enumerate}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Wyniki}
+\subsection{Klasyfikacja na bazie modelu regresji liniowej}
+Rozpoczynamy od wczytania danych \verb+iris+ z pakietu \verb+datasets+.
+
+<<A1, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Wczytane dane">>=
+data("iris")
+df <- iris
+
+tab <- xtable(head(df), caption = "Wczytane dane")
+print(tab, type = "latex", table.placement = "H", include.rownames=TRUE, row.names = TRUE, col.names = FALSE, sanitize.text.function=function(x){x})
+@
+
+Dzielimy teraz losowo dane na dwa zbiory -- zbiór uczący i zbiór testowy (w proporcji $2:1$).
+
+<<A2, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Podział na zbiór uczący i testowy">>=
+data("iris")
+df <- iris
+
+v <- as.vector(c(rep(TRUE,2/3*nrow(df)),rep(FALSE,1/3*nrow(df)))) #wektor 2/3 x TRUE, 1/3 x FALSE
+ind <- sample(v) # wymieszanie TRUE i FALSE
+df.learn <- df[ind, ] # zbiór uczący
+df.test <- df[!ind, ] # zbiór testowy
+
+learn.versicolor <- nrow(subset(df.learn, Species == "versicolor"))
+learn.virginica <- nrow(subset(df.learn, Species == "virginica"))
+learn.setosa <- nrow(subset(df.learn, Species == "setosa"))
+test.versicolor <- nrow(subset(df.test, Species == "versicolor"))
+test.virginica <- nrow(subset(df.test, Species == "virginica"))
+test.setosa <- nrow(subset(df.test, Species == "setosa"))
+
+#Rysowanie tabeli
+tab <-
+  data.frame(x = c(nrow(df.learn), 
+                   learn.versicolor,
+                   learn.virginica,
+                   learn.setosa), 
+             y = c(nrow(df.test), 
+                   test.versicolor,
+                   test.virginica,
+                   test.setosa)) 
+
+tab <- as.data.frame(t(tab))
+rownames(tab) <- c("learn set", "test set")
+colnames(tab) <- c("l. obserwacji", "versicolor", "virginica", "setosa")
+
+tab <- xtable(tab, caption = "Podział na zbiór uczący i testowy")
+print(tab, type = "latex", table.placement = "H", include.rownames=TRUE, row.names = TRUE, col.names = TRUE, sanitize.text.function=function(x){x})
+@
+
+Przygotujemy teraz model regresji liniowej dla danych ze zbioru uczącego.
+
+<<A3, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Prognoza dla zbioru uczącego (model 1)">>=
+labels <- df.learn$Species
+K <- length(levels(labels))
+            
+# X - macierz eksperymentu (ang. design matrix) 
+X <- cbind(rep(1,nrow(df.learn)), df.learn[,1:4])
+X <- as.matrix(X)
+
+Y <- matrix(0, nrow=nrow(df.learn), ncol=K)
+
+# konwersja etykietek klas na wartości numeryczne
+labels.num <- as.numeric(labels)
+
+for (k in 1:K){
+  Y[labels.num==k, k] <- 1
+}
+
+B <- solve(t(X)%*%X) %*% t(X) %*% Y
+
+# Wartości prognozowane - zbiór uczący
+Y.hat.learn <- X%*%B
+
+#Prezentacja wyników
+matplot(Y.hat.learn, main="Prognozy (Y.hat.learn)",xlab="id", ylim=c(-.5,2))
+abline(v=c(learn.setosa,learn.setosa+learn.versicolor), lty=2, col="gray")
+legend(x="topright", legend=paste(1:3,levels(iris$Species)), col=1:3, text.col=1:3, bg="azure2")
+@
+
+
+<<A4, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Prognoza dla zbioru testowego (model 1)">>=
+# Wartości prognozowane - zbiór testowy
+X <- cbind(rep(1,nrow(df.test)), df.test[,1:4])
+X <- as.matrix(X)
+Y.hat.test <- X%*%B
+
+
+#Prezentacja wyników
+matplot(Y.hat.test, main="Prognozy (Y.hat.test)",xlab="id", ylim=c(-.5,2))
+abline(v=c(test.setosa,test.setosa+test.versicolor), lty=2, col="gray")
+legend(x="topright", legend=paste(1:3,levels(iris$Species)), col=1:3, text.col=1:3, bg="azure2")
+@
+
+Spróbujemy teraz ocenić jakość naszego modelu. W tym celu wyznaczamy macierz pomyłek dla zbioru uczącego i testowego.
+
+<<A5, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Macierz pomyłek dla zbioru uczącego (model 1)">>=
+class <- levels(df$Species)
+
+labels.learn <- df.learn$Species
+#Dla zbior 
+max.ind.learn <- apply(Y.hat.learn, 1, FUN=function(x) which.max(x))
+predicted.labels.learn <- class[max.ind.learn]
+confusion.matrix.learn <- table(labels.learn, predicted.labels.learn)
+
+accuracy.learn.1 <- sum(diag(confusion.matrix.learn))/length(labels.learn)
+
+#Prezentacja wyników
+tab <- confusion.matrix.learn
+
+tab <- tab %>%
+  kable(caption = "Macierz pomyłek dla zbioru uczącego (model 1)", position='h') %>%
+  kable_styling()
+tab <- add_header_above(tab,c("Rzeczywiste etykietki","Prognozowane etkietki"=3))
+print(tab)
+@
+
+Dokładność klasyfikacji dla zbioru uczącego wynosi \Sexpr{accuracy.learn.1}.
+
+<<A6, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Macierz pomyłek dla zbioru testowego (model 1)">>=
+
+labels.test <- df.test$Species
+max.ind.test <- apply(Y.hat.test, 1, FUN=function(x) which.max(x))
+predicted.labels.test <- class[max.ind.test]
+confusion.matrix.test <- table(labels.test, predicted.labels.test)
+
+accuracy.test.1 <- sum(diag(confusion.matrix.test))/length(labels.test)
+
+accuracy.test.versicolor <- sum(confusion.matrix.test[2,c(1,3)])/sum(confusion.matrix.test[2,])
+
+#Prezentacja wyników
+tab <- confusion.matrix.test
+
+tab <- tab %>%
+  kable(caption = "Macierz pomyłek dla zbioru testowego (model 1)", position='h') %>%
+  kable_styling()
+tab <- add_header_above(tab,c("Rzeczywiste etykietki","Prognozowane etkietki"=3))
+print(tab)
+@
+
+Dokładność klasyfikacji dla zbioru testowego natomiast jest równa \Sexpr{accuracy.test.1}.
+
+Możemy zauważyć, że w zbiorze testowym odsetek pomyłek, gdy w rzeczywistości mamy \verb+versicolor+, to około \Sexpr{accuracy.test.versicolor}. Również spoglądając na wykres widzimy, że obserwacje w środkowej grupie są słabo odseparowane. Stąd wyciągamy wniosek, że w naszym modelu występuje efekt maskowania klasy \verb+versicolor+.
+
+Spróbujemy teraz zbudować model regresji po uzupełnieniu wyjściowych cech o składniki wielomianowe stopnia $2$. Konstruujemy w tym celu nową ramkę danych.
+
+<<A7, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Nowa ramka danych">>=
+
+df.new <- df #sklonowanie poprzedniej ramki danych
+
+names.col <- c("SL", "SW", "PL", "PW", "Species", "PL2", "PW2", "SL2", "SW2", "PL*PW", "PL*SW", "PL*SL", "PW*SL", "PW*SW", "SL*SW")
+
+names <- c("PL2", "PW2", "SL2", "SW2", "PL*PW", "PL*SW", "PL*SL", "PW*SL", "PW*SW", "SL*SW")
+
+df.new[, names] <- NA
+colnames(df.new) <- names.col
+
+# mnożenie wszystkich kolumn
+df.new$PL2 <- df.new$PL * df.new$PL
+df.new$PW2 <- df.new$PW * df.new$PW
+df.new$SL2 <- df.new$SL * df.new$SL
+df.new$SW2 <- df.new$SW * df.new$SW
+
+df.new$"PL*PW" <- df.new$PL * df.new$PW
+df.new$"PL*SW" <- df.new$PL * df.new$SW
+df.new$"PL*SL" <- df.new$PL * df.new$SL
+df.new$"PW*SL" <- df.new$PW * df.new$SL
+df.new$"PW*SW" <- df.new$PW * df.new$SW
+df.new$"SL*SW" <- df.new$SL * df.new$SW
+
+tab.cut1 <- df.new[,c(1:9)]
+tab.cut2 <- df.new[,c(10:15)]
+tab1 <- xtable(head(tab.cut1))
+tab2 <- xtable(head(tab.cut2), caption = "Nowa ramka danych")
+
+print(tab1, type = "latex", table.placement = "H", include.rownames=TRUE, row.names = TRUE, col.names = FALSE, sanitize.text.function=function(x){x})
+print(tab2, type = "latex", table.placement = "H", include.rownames=TRUE, row.names = TRUE, col.names = FALSE, sanitize.text.function=function(x){x})
+@
+
+Teraz powtarzając poprzednie kroki (wybieramy taki sam zbiór uczący i testowy) rysujemy wykresy dla modelu $2$.
+
+<<A8, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Prognozy dla zbioru uczącego (model 2)">>=
+df <- df.new
+
+df.learn <- df[ind, ] # zbiór uczący
+df.test <- df[!ind, ] # zbiór testowy
+
+df.learn.n <- df.learn[-5]
+df.test.n <- df.test[-5]
+
+####
+
+labels <- df.learn$Species
+K <- length(levels(labels))
+            
+# X - macierz eksperymentu (ang. design matrix) 
+X <- cbind(rep(1,nrow(df.learn)), df.learn.n)
+X <- as.matrix(X)
+
+Y <- matrix(0, nrow=nrow(df.learn), ncol=K)
+
+# konwersja etykietek klas na wartości numeryczne
+labels.num <- as.numeric(labels)
+
+for (k in 1:K){
+  Y[labels.num==k, k] <- 1
+}
+
+B <- solve(t(X)%*%X) %*% t(X) %*% Y
+
+# Wartości prognozowane - zbiór uczący
+Y.hat.learn <- X%*%B
+
+#Prezentacja wyników
+matplot(Y.hat.learn, main="Prognozy (Y.hat.learn)",xlab="id", ylim=c(-.5,2))
+abline(v=c(learn.setosa,learn.setosa+learn.versicolor), lty=2, col="gray")
+legend(x="topright", legend=paste(1:3,levels(iris$Species)), col=1:3, text.col=1:3, bg="azure2")
+@
+
+<<A9, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Prognozy dla zbioru testowego (model 2)">>=
+
+# Wartości prognozowane - zbiór testowy
+X <- cbind(rep(1,nrow(df.test)), df.test.n)
+X <- as.matrix(X)
+Y.hat.test <- X%*%B
+
+
+#Prezentacja wyników
+matplot(Y.hat.test, main="Prognozy (Y.hat.test)",xlab="id", ylim=c(-.5,2))
+abline(v=c(test.setosa,test.setosa+test.versicolor), lty=2, col="gray")
+legend(x="topright", legend=paste(1:3,levels(iris$Species)), col=1:3, text.col=1:3, bg="azure2")
+
+@
+
+Analogicznie jak dla modelu 1, wyznaczymy również macierz pomyłek.
+
+<<A10, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Macierz pomyłek dla zbioru uczącego (model 2)">>=
+class <- levels(df$Species)
+
+labels.learn <- df.learn$Species
+#Dla zbior 
+max.ind.learn <- apply(Y.hat.learn, 1, FUN=function(x) which.max(x))
+predicted.labels.learn <- class[max.ind.learn]
+confusion.matrix.learn <- table(labels.learn, predicted.labels.learn)
+
+accuracy.learn.2 <- sum(diag(confusion.matrix.learn))/length(labels.learn)
+
+#Prezentacja wyników
+tab <- confusion.matrix.learn
+
+tab <- tab %>%
+  kable(caption = "Macierz pomyłek dla zbioru uczącego (model 2)", position='h') %>%
+  kable_styling()
+tab <- add_header_above(tab,c("Rzeczywiste etykietki","Prognozowane etkietki"=3))
+print(tab)
+@
+
+W modelu 2 dokładność klasyfikacji dla zbioru uczącego wynosi \Sexpr{accuracy.learn.2}.
+
+<<A11, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Macierz pomyłek dla zbioru testowego (model 2)">>=
+
+labels.test <- df.test$Species
+max.ind.test <- apply(Y.hat.test, 1, FUN=function(x) which.max(x))
+predicted.labels.test <- class[max.ind.test]
+confusion.matrix.test <- table(labels.test, predicted.labels.test)
+
+accuracy.test.2 <- sum(diag(confusion.matrix.test))/length(labels.test)
+
+accuracy.test.versicolor <- sum(confusion.matrix.test[2,c(1,3)])/sum(confusion.matrix.test[2,])
+
+#Prezentacja wyników
+tab <- confusion.matrix.test
+
+tab <- tab %>%
+  kable(caption = "Macierz pomyłek dla zbioru testowego (model 2)", position='h') %>%
+  kable_styling()
+tab <- add_header_above(tab,c("Rzeczywiste etykietki","Prognozowane etkietki"=3))
+print(tab)
+@
+
+Dokładność klasyfikacji dla zbioru testowego natomiast jest równa \Sexpr{accuracy.test.2}. Porównajmy teraz dokładność klasyfikacji dla obu modeli.
+
+<<A12, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Porównanie dokładności klasyfikacji">>=
+
+
+#Prezentacja wyników
+tab <- data.frame(x=c(accuracy.learn.1, accuracy.learn.2), y=c(accuracy.test.1, accuracy.test.2))
+colnames(tab) <- c("Zbiór uczący", "Zbiór testowy")
+rownames(tab) <- c("Model 1", "Model 2")
+
+
+tab <- xtable(tab, caption = "Porównanie dokładności klasyfikacji")
+print(tab, type = "latex", table.placement = "H", include.rownames=TRUE, row.names = TRUE, col.names = FALSE, sanitize.text.function=function(x){x})
+@
+
+Widzimy, że zdecydowanie lepszym modelem jest model $2$. Również spoglądając na wykresy możemy zauważyć, że pozbyliśmy się zjawiska maskowania cechy \verb+versicolor+. Możemy stąd wywnioskować, że uwzględnienie składników wielomianowych stopnia $2$ miało kluczowy wpływ na jakość naszego modelu klasyfikacyjnego.
+
+%%%%%%%%%%%%%
+
+\subsection{Porównanie metod klasyfikacji dla danych Glass z pakietu mlbench}
+
+Rozpoczynamy od wczytania danych \verb+Glass+, które zawierają informacje o współczynniku załamania światła oraz zawartości poszczególnych pierwiastków chemicznych dla badanych szkieł.
+
+<<B1, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Wczytane dane">>=
+data(Glass)
+df <- Glass
+attach(df)
+
+tab <- xtable(head(df), caption = "Dane Glass - kilka pierwszych wierszy")
+print(tab, type = "latex", table.placement = "H", include.rownames=TRUE, row.names = TRUE, col.names = FALSE, sanitize.text.function=function(x){x})
+
+labels <- df$Type
+levels <- levels(labels)
+K <- length(levels(labels))
+@
+
+Etykietą jest cecha \verb+Type+ -- mamy \Sexpr{K} klas. Nietypowy jest fakt, że nie pojawia się szkło oznaczone jako ,,$4$", mamy natomiast \Sexpr{levels}.
+
+<<B2, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Spojrzenie na dane">>=
+#Sprawdzenie liczby cech
+liczba.cech <- ncol(df)
+#Sprawdzenie liczby obserwacji
+liczba.obserwacji <- nrow(df)
+
+#Sprawdzenie, jakiego typu są dane zmienne
+id.numeric <- which(sapply(df, is.numeric))
+id.factor <- which(sapply(df, is.factor))
+
+#Liczba cech ilościowych
+liczba.cech.ilo <- dim(cbind(id.numeric))[1]
+
+#Liczba cech jakościowych
+liczba.cech.jako <- dim(cbind(id.factor))[1]
+
+#Zliczenie brakujących rekordów
+na.sum <- sum(is.na(df))
+
+wyniki <- data.frame(a = c(liczba.cech),
+                     b = c(liczba.obserwacji),
+                     c = c(liczba.cech.ilo),
+                     d = c(liczba.cech.jako),
+                     e = c(na.sum))
+colnames(wyniki) <- c("Liczba cech","Liczba obserwacji","Cechy ilościowe","Cechy jakościowe","Brakujące wartości")
+rownames(wyniki) <- c("")
+tab1 <- xtable( wyniki, digits = 3, include.rownames=FALSE, row.names = FALSE, caption = "Wstępne spojrzenie na dane", label = "tab:tabela1")
+print(tab1, type = "latex", table.placement = "H")
+@
+
+Sprawdźmy, jak często pojawiają się szkła danego typu w tej ramce dnaych.
+
+<<B3, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Wykres częstości dla Type">>=
+plot_bar(df)
+@
+
+Widzimy, że najwięcej mamy szkieł typu $1$ oraz $2$. Zbadajmy również rozkład dla pozostałych cech. Przeprowadzimy teraz analizę PCA oraz sporządzimy kolejno wykresy pudełkowe, wykresy gęstości oraz macierze korelacji z podziałem na kolejne grupy.
+
+<<B4, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height=8, fig.cap="Analiza PCA">>=
+glass.pca <- prcomp(Glass[,-10], center=T, scale=T)
+
+p <- fviz_pca(glass.pca, label="var", habillage=Glass$Type, addEllipses=TRUE, ellipse.level=0.95, title="Glass - dwuwykres na bazie PCA")
+p + scale_color_brewer(palette="Dark2")
+@
+
+Wstępnie widzimy, że typ $7$ powinien być dobrze charakteryzowany przez zawartość baru, glinu oraz sodu, a typ $2$ przez zawartość wapienia oraz współczynnik załamania. Najbardziej rozrzuconymi zdają się natomiast być typ $5$ i $6$, a więc najmniej liczne rodzaje szkieł.
+
+<<B5, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height=10, fig.cap="Wykresy pudełkowe według Type">>=
+p11 <- ggplot(df, aes(x = RI , fill = Type)) +
+  geom_boxplot(alpha = 0.5) +
+  ggtitle("Boxplot RI")
+
+p12 <- ggplot(df, aes(x = Na , fill = Type)) +
+  geom_boxplot(alpha = 0.5) +
+  ggtitle("Boxplot Na")
+
+p13 <- ggplot(df, aes(x = Mg , fill = Type)) +
+  geom_boxplot(alpha = 0.5) +
+  ggtitle("Boxplot Mg")
+
+p21 <- ggplot(df, aes(x = Al , fill = Type)) +
+  geom_boxplot(alpha = 0.5) +
+  ggtitle("Boxplot Al")
+
+p22 <- ggplot(df, aes(x = Si , fill = Type)) +
+  geom_boxplot(alpha = 0.5) +
+  ggtitle("Boxplot Si")
+
+p23 <- ggplot(df, aes(x = K , fill = Type)) +
+  geom_boxplot(alpha = 0.5) +
+  ggtitle("Boxplot K") +
+  coord_cartesian(xlim = c(0,2))
+
+p31 <- ggplot(df, aes(x = Ca , fill = Type)) +
+  geom_boxplot(alpha = 0.5) +
+  ggtitle("Boxplot Ca")
+
+p32 <- ggplot(df, aes(x = Ba , fill = Type)) +
+  geom_boxplot(alpha = 0.5) +
+  ggtitle("Boxplot Ba") +
+  coord_cartesian(xlim = c(0,0.2))
+
+p33 <- ggplot(df, aes(x = Fe , fill = Type)) +
+  geom_boxplot(alpha = 0.5) +
+  ggtitle("Boxplot Fe") +
+  coord_cartesian(xlim = c(0,0.3))
+
+ggarrange(p11, p12, p13, p21, p22, p23, p31, p32, p33, ncol=2, nrow=5, common.legend = TRUE, legend="bottom")
+@
+
+<<B6, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height=10, fig.cap="Wykresy gęstości">>=
+p11 <- ggplot(df, aes(x = RI , fill = Type)) +
+  geom_density(alpha = 0.5) +
+  ggtitle("Boxplot RI")
+
+p12 <- ggplot(df, aes(x = Na , fill = Type)) +
+  geom_density(alpha = 0.5) +
+  ggtitle("Boxplot Na")
+
+p13 <- ggplot(df, aes(x = Mg , fill = Type)) +
+  geom_density(alpha = 0.5) +
+  ggtitle("Boxplot Mg")
+
+p21 <- ggplot(df, aes(x = Al , fill = Type)) +
+  geom_density(alpha = 0.5) +
+  ggtitle("Boxplot Al")
+
+p22 <- ggplot(df, aes(x = Si , fill = Type)) +
+  geom_density(alpha = 0.5) +
+  ggtitle("Boxplot Si")
+
+p23 <- ggplot(df, aes(x = K , fill = Type)) +
+  geom_density(alpha = 0.5) +
+  ggtitle("Boxplot K") +
+  coord_cartesian(xlim = c(0,2))
+
+p31 <- ggplot(df, aes(x = Ca , fill = Type)) +
+  geom_density(alpha = 0.5) +
+  ggtitle("Boxplot Ca")
+
+p32 <- ggplot(df, aes(x = Ba , fill = Type)) +
+  geom_density(alpha = 0.5) +
+  ggtitle("Boxplot Ba") +
+  coord_cartesian(xlim = c(0,0.2))
+
+p33 <- ggplot(df, aes(x = Fe , fill = Type)) +
+  geom_density(alpha = 0.5) +
+  ggtitle("Boxplot Fe") +
+  coord_cartesian(xlim = c(0,0.3))
+
+ggarrange(p11, p12, p13, p21, p22, p23, p31, p32, p33, ncol=2, nrow=5, common.legend = TRUE, legend="bottom")
+@
+
+<<B7, echo=FALSE, eval=TRUE, results='asis', message=FALSE, warning=FALSE, fig.height=7, fig.cap="Macierze korelacji dla kolejnych typów">>=
+df.m <- df[, c(1:9)]
+
+df.1 <- subset(df.m, Type=="1")
+p11 <- ggcorr(df.1) + 
+  ggtitle("Typ 1")
+
+df.2 <- subset(df.m, Type=="2")
+p12 <- ggcorr(df.2) + 
+  ggtitle("Typ 2")
+
+
+df.3 <- subset(df.m, Type=="3")
+p13 <- ggcorr(df.3) + 
+  ggtitle("Typ 3")
+
+df.5 <- subset(df.m, Type=="5")
+p21 <- ggcorr(df.5) + 
+  ggtitle("Typ 5")
+
+df.6 <- subset(df.m, Type=="6")
+p22 <- ggcorr(df.6) + 
+  ggtitle("Typ 6")
+
+df.7 <- subset(df.m, Type=="7")
+p23 <- ggcorr(df.7) + 
+  ggtitle("Typ 7")
+
+#pairs(df.2) #szukanie zależności
+
+ggarrange(p11, p12, p13, p21, p22, p23, ncol=2, nrow=3, common.legend = TRUE, legend="bottom")
+@
+
+Kilka wstępnych obserwacji, które możemy odczytać z powyższych wykreśów:
+\begin{enumerate}
+  \item Typy 1, 2, 3 wyróżniają się na tle pozostałych podobną zawartością magnezu oraz żelaza,
+  \item typ 5 wyróżnia większa zawartość wapienia oraz niewielka zawartość magnezu,
+  \item typ 6 wyróżnia się niewielką zawartością magnezu oraz wysoką zawartością sodu, ma także mocno skupiony wykres gęstości dla RI,
+  \item brak zawartości baru powinna dobrze charakteryzować typ 1 i 3,
+  \item istnieje niemal liniowa korelacja pomiędzy zawartością wapienia, a współczynnikiem załamania (z wyjątkiem typu 7),
+  \item typ 6 wyróżnia się wysoką korelacją pomiędzy krzemem i sodą,
+  \item typy 2 i 7 wyróżniają się wyższą korelacją pomiędzy magnezem i potasem.
+  \item najgorsze zdolności dyskryminacyjne zdają się mieć żelazo oraz potas.
+\end{enumerate}
+
+Narysujemy teraz wykres rozrzutu dla współczynnika załamnia i krzemu z podziałem na grupy.
+
+<<B8, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.size=3, fig.cap="Wykres rozrzutu RI vs Ca">>=
+df.no7 <- subset(df, (Type %in% c("1", "2", "3", "4", "6")))
+model <- lm(RI~Ca, data=df)
+
+ggplot(df, aes(Ca,RI)) +
+  geom_point(aes(
+    colour = Type
+  )) +
+  geom_smooth(method='lm', se=FALSE)
+@
+
+Faktycznie widzimy, że mamy do czynienia z niemal liniową zależnością.
+
+\newpage
+Przygotujemy teraz zbiór uczący i zbiór testowy (w proporcji $2:1$), na których będziemy przeprowadzali porównanie kolejnych metod.
+
+<<B9, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Podział na zbiór uczący i testowy">>=
+set.seed(1234)
+v <- as.vector(c(rep(TRUE,2/3*nrow(df)),rep(FALSE,1/3*nrow(df)))) #wektor 2/3 x TRUE, 1/3 x FALSE
+ind <- sample(v) # wymieszanie TRUE i FALSE
+df.learn <- df[ind, ] # zbiór uczący
+df.test <- df[!ind, ] # zbiór testowy
+
+learn.1 <- nrow(subset(df.learn, Type == "1"))
+learn.2 <- nrow(subset(df.learn, Type == "2"))
+learn.3 <- nrow(subset(df.learn, Type == "3"))
+learn.5 <- nrow(subset(df.learn, Type == "5"))
+learn.6 <- nrow(subset(df.learn, Type == "6"))
+learn.7 <- nrow(subset(df.learn, Type == "7"))
+
+test.1 <- nrow(subset(df.test, Type == "1"))
+test.2 <- nrow(subset(df.test, Type == "2"))
+test.3 <- nrow(subset(df.test, Type == "3"))
+test.5 <- nrow(subset(df.test, Type == "5"))
+test.6 <- nrow(subset(df.test, Type == "6"))
+test.7 <- nrow(subset(df.test, Type == "7"))
+
+#Rysowanie tabeli
+tab <- data.frame(x = c(nrow(df.learn), 
+                   learn.1,
+                   learn.2,
+                   learn.3,
+                   learn.5,
+                   learn.6,
+                   learn.7), 
+             y = c(nrow(df.test), 
+                   test.1,
+                   test.2,
+                   test.3,
+                   test.5,
+                   test.6,
+                   test.7))
+
+tab <- as.data.frame(t(tab))
+rownames(tab) <- c("learn set", "test set")
+colnames(tab) <- c("l. obserwacji", "1", "2", "3","5","6","7")
+
+tab <- xtable(tab, caption = "Podział na zbiór uczący i testowy")
+print(tab, type = "latex", table.placement = "H", include.rownames=TRUE, row.names = TRUE, col.names = TRUE, sanitize.text.function=function(x){x})
+@
+
+Analizę przeprowadzimy dla następujących metod:
+\begin{enumerate}
+  \item k-najbliższych sąsiadów,
+  \item drzewa klasyfikacyjne,
+  \item naiwny klasyfikator bayesowski.
+\end{enumerate}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\paragraph{Metoda k-najbliższych sąsiadów}\mbox{}\\
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Rozpoczniemy od metody \textbf{k-najbliższych sąsiadów}. Najpierw, przy użyciu \textbf{5-cross validation} spróbujemy porównać różne modele i wybrać, dla jakich zmiennych objaśniających otrzymujemy najlepsze wyniki.
+
+<<B10XX, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Porównanie doboru zmiennych objaśniających">>=
+# Model 2: Species ~ Petal.Length + Petal.Width
+my.predict  <- function(model, newdata) predict(model, newdata=newdata, type="class")
+my.ipredknn <- function(formula1, data1, ile.sasiadow) ipredknn(formula=formula1,data=data1,k=ile.sasiadow)
+
+#errorest(Type ~., df.learn, model=my.ipredknn, predict=my.predict, estimator="cv",     est.para=control.errorest(k = 10), ile.sasiadow=5)
+#errorest(Type ~., df.learn, model=my.ipredknn, predict=my.predict, estimator="boot",   est.para=control.errorest(nboot = 50), ile.sasiadow=5)
+# errorest(Type ~., df.learn, model=my.ipredknn, predict=my.predict, estimator="632plus",est.para=control.errorest(nboot = 50), ile.sasiadow=5)
+K = 5 # K - cross validation
+n <- nrow(df)
+dlugosc <- n%/%K
+tablica_losowa <- runif(n)
+podzial <- rank(tablica_losowa)
+
+blok <- (podzial-1)%/%dlugosc + 1
+blok <- as.factor(blok) #która obserwacja pojawi się w którym bloku
+
+k.cross.knn <- function(df, model.1, liczba.sasiadow) {
+  bledy <- numeric(0)
+  for (k in 1:K){
+    df.test.1 <- df[blok==k,]
+    df.learn.1 <- df[blok!=k,]
+    
+    model.1 <- ipredknn(Type ~ Ba + Mg + K + Ca + Na + Al + RI, data=df.learn.1, k=liczba.sasiadow) #buduję model na danych uczących
+    predykcje <- predict(model.1, newdata=df.test.1, type="class") #konstruuję predykcje na danych testowych
+    
+    labels.real <- df.test.1$Type
+    labels.predict <- predict(model.1, newdata=df.test.1, type = "class") #porównuję prawdziwe etykietki z uzyskanymi w modelu
+    tab <- table(labels.predict,labels.real) # macierz pomyłek
+    accuracy.test.dk <- sum(diag(as.matrix(tab)))/length(labels.real) # dokładność klasyfikacji
+    
+    bledy <- rbind(bledy, 1 - accuracy.test.dk) #błąd klasyfikacji
+  }
+  return(bledy)
+}
+
+liczba.sasiadow.zakres <- 15
+liczba.powtorzen <- 10
+
+L <- numeric(0)
+for (k in 1:liczba.sasiadow.zakres){
+  P <- numeric(0)
+  for (p in 1:liczba.powtorzen){
+  blad <- k.cross.knn(df=df,model.1=model.1, liczba.sasiadow=k)
+  P <- append(P, blad)
+  }
+  L <- append(L, mean(P))
+}
+
+bledy.1 <- k.cross.knn(df=df,model.1=model.1, liczba.sasiadow=1)
+bledy.1 <- rbind(bledy.1, mean(bledy.1))
+
+bledy.3 <- k.cross.knn(df=df,model.1=model.1, liczba.sasiadow=3)
+bledy.3 <- rbind(bledy.3, mean(bledy.3))
+
+bledy.5 <- k.cross.knn(df=df,model.1=model.1, liczba.sasiadow=5)
+bledy.5 <- rbind(bledy.5, mean(bledy.5))
+
+bledy.10 <- k.cross.knn(df=df,model.1=model.1, liczba.sasiadow=10)
+bledy.10 <- rbind(bledy.10, mean(bledy.10))
+
+tab <- data.frame(x = bledy.1, y = bledy.3, z = bledy.5, h <- bledy.10)
+tab <- t(tab)
+colnames(tab) <- c("1", "2", "3", "4", "5", "Średnia")
+rownames(tab) <- c("Błędne predykcje w bloku, k=1", "Błędne predykcje w bloku, k=3", "Błędne predykcje w bloku, k=5", "Błędne predykcje w bloku, k=10")
+tab1 <- xtable( tab, digits = 3, include.rownames=FALSE, row.names = FALSE, caption = "5-Cross validation dla k-nn", label = "tab:tabela_knn")
+
+wyniki1 <- L
+
+df.plot1 <- data.frame(x = c(1:liczba.sasiadow.zakres), 
+                          y = wyniki1)
+
+p1 <- ggplot(df.plot1, aes(x=x,y=y)) +
+  geom_line(color="darkred") +
+  geom_point(shape=21, color="black", fill="darkred", size=6) +
+  ggtitle("Ocena dokładności - 5-fold Cross-Validation") +
+  xlab("k (liczba sąsiadów)") +
+  ylab("błąd klasyfikacji (5-fold Cross-Validation)")
+
+
+
+
+liczba.sasiadow.zakres <- 1:15
+model2 <- Type ~ Ba + Mg + K + Ca + Na + Al + RI
+wyniki4 <-  sapply(liczba.sasiadow.zakres, function(k)
+  errorest(model2, df, model=my.ipredknn, predict=my.predict, estimator="cv", est.para=control.errorest(k = 5), ile.sasiadow=k)$error)
+
+df.plot4 <- data.frame(x = c(liczba.sasiadow.zakres), 
+                          y = c(wyniki4))
+
+# Model 3: Species ~ Sepal.Length + Sepal.Width
+
+model2 <- Type ~ Al + RI + Si + Fe
+wyniki5 <-  sapply(liczba.sasiadow.zakres, function(k)
+  errorest(model2, df, model=my.ipredknn, predict=my.predict, estimator="cv", est.para=control.errorest(k = 5), ile.sasiadow=k)$error)
+
+df.plot5 <- data.frame(x = c(liczba.sasiadow.zakres), 
+                          y = c(wyniki5))
+
+ggplot(df.plot5, aes(x=x, y=y)) +
+  geom_line(aes(x=x, y=y, colour = "a")) +
+  geom_point(shape=21, color="black", fill="darkblue", size=6)+
+  geom_line(data=df.plot4, aes(x=x,y=y, colour = "b")) +
+  geom_point(data=df.plot4, aes(x=x,y=y), shape=21, color="black", fill="darkred", size=6) +
+  geom_line(data=df.plot1, aes(x=x,y=y, colour = "c")) +
+  geom_point(data=df.plot1, aes(x=x,y=y), shape=21, color="black", fill="lightblue", size=6) +
+  ggtitle("Ocena dokładności różnych modeli - 5-fold Cross-Validation") +
+  xlab("k (liczba sąsiadów)") +
+  theme(legend.position = "bottom") +
+  ylab("błąd klasyfikacji (5-fold Cross-Validation)") +
+  scale_colour_manual(name="Model",
+        values=c(a="darkblue", b="darkred", c="lightblue"),
+        labels=c(a="1. Type ~  Al + RI + Si + Fe ", b="2. Type ~ Ba + Mg + K + Ca + Na + Al + RI", c="3. Type ~ ."))
+@
+
+Widzimy, że model \verb+1+ radzi sobie najgorzej (zmienne objaśniające to te o najgorszych zdolnościach dyskryminacyjnych), natomiast najlepiej poradził sobie model \verb+2+, a więc ten w którym uwzględniono wszystkie zmienne z wyjątkiem dwóch o najsłabszych zdolnościach dyskryminacyjnych -- krzemu oraz żelaza.
+
+Przeprowadzimy ocenę metodami \textbf{K-cross validation}, \textbf{Bootstrap} oraz \textbf{.632+}, aby dobrać najlepszą liczbę sąsiadów.
+
+<<B12a, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height=3, fig.cap="5-cross validation dla różnej liczby sąsiadów">>=
+print(tab1, type = "latex", table.placement = "H")
+@
+
+
+<<B12, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height=3, fig.cap="Bootstrap dla różnej liczby sąsiadów">>=
+my.predict  <- function(model, newdata) predict(model, newdata=newdata, type="class")
+my.ipredknn <- function(formula1, data1, ile.sasiadow) ipredknn(formula=formula1,data=data1,k=ile.sasiadow)
+
+#errorest(Type ~., df.learn, model=my.ipredknn, predict=my.predict, estimator="cv",     est.para=control.errorest(k = 10), ile.sasiadow=5)
+#errorest(Type ~., df.learn, model=my.ipredknn, predict=my.predict, estimator="boot",   est.para=control.errorest(nboot = 50), ile.sasiadow=5)
+# errorest(Type ~., df.learn, model=my.ipredknn, predict=my.predict, estimator="632plus",est.para=control.errorest(nboot = 50), ile.sasiadow=5)
+
+liczba.sasiadow.zakres <- 1:15
+wyniki3 <-  sapply(liczba.sasiadow.zakres, function(k)
+  errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.ipredknn, predict=my.predict, 
+           estimator="boot", est.para=control.errorest(nboot = 50), ile.sasiadow=k)$error)
+
+df.plot3 <- data.frame(x = c(liczba.sasiadow.zakres), 
+                          y = c(wyniki3))
+
+p3 <- ggplot(df.plot3, aes(x=x,y=y)) +
+  geom_line(color="darkred") +
+  geom_point(shape=21, color="black", fill="darkred", size=6) +
+  ggtitle("Ocena dokładności - bootstrap") +
+  xlab("k (liczba sąsiadów)") +
+  ylab("błąd klasyfikacji (bootstrap)")
+
+p3
+@
+
+<<B12x, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height=3, fig.cap=".632+ dla różnej liczby sąsiadów">>=
+wyniki2 <-  sapply(liczba.sasiadow.zakres, function(k)
+  errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.ipredknn, predict=my.predict, 
+           estimator="632plus", est.para=control.errorest(nboot = 50), ile.sasiadow=k)$error)
+
+df.plot2 <- data.frame(x = c(liczba.sasiadow.zakres), 
+                          y = c(wyniki2))
+
+p2 <- ggplot(df.plot2, aes(x=x,y=y)) +
+  geom_line(color="darkred") +
+  geom_point(shape=21, color="black", fill="darkred", size=6) +
+  ggtitle("Ocena dokładności - .632+") +
+  xlab("k (liczba sąsiadów)") +
+  ylab("błąd klasyfikacji (.632+)")
+
+p2
+@
+
+Widzimy, że najlepszą liczbą sąsiadów zdaje się być $1$. Sporządzimy zatem macierz pomyłek oraz sprawdzimy dokładność klasyfikacji w zbiorze uczącym i testowym.
+
+<<B10, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Podział na zbiór uczący i testowy">>=
+
+najlepsze <- c("Ba, Mg, Si, K, Fe") #cechy o najlepszych zdolnościach dyskryminacyjnych
+
+model.1 <- ipredknn(Type ~ Ba + Mg + K + Ca + Na + Al + RI, data=df.learn, k=1) #k najbliższych sąsiadów
+
+labels.real <- df.learn$Type
+labels.predict <- predict(model.1, df.learn, type="class")
+tab <- table(labels.predict,labels.real)
+accuracy.learn.knn <- sum(diag(as.matrix(tab)))/length(labels.real)
+
+tab <- tab %>%
+  kable(caption = "Macierz pomyłek dla zbioru uczącego (1-NN)", position='h') %>%
+  kable_styling()
+tab <- add_header_above(tab,c("Rzeczywiste etykietki","Prognozowane etkietki"=6))
+print(tab)
+@
+
+Dokładność klasyfikacji dla zbioru uczącego wynosi \Sexpr{accuracy.learn.knn}.
+
+<<B11, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Podział na zbiór uczący i testowy">>=
+labels.real <- df.test$Type
+labels.predict <- predict(model.1, df.test, type="class")
+tab <- table(labels.predict,labels.real)
+accuracy.test.knn <- sum(diag(as.matrix(tab)))/length(labels.real)
+
+tab <- tab %>%
+  kable(caption = "Macierz pomyłek dla zbioru testowego (1-NN)", position='h') %>%
+  kable_styling()
+tab <- add_header_above(tab,c("Rzeczywiste etykietki","Prognozowane etkietki"=6))
+print(tab)
+@
+
+Dokładność klasyfikacji dla zbioru testowego wynosi \Sexpr{accuracy.test.knn}. Wyniki dla najlepszego modelu podsumowuje poniższa tabela:
+
+<<B11xxxx, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Podział na zbiór uczący i testowy">>=
+
+###### 5 - cross validation
+
+knn.blad.cv <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.ipredknn, predict=my.predict, 
+           estimator="boot", est.para=control.errorest(nboot = 50), ile.sasiadow=1)$error
+
+####### Bootstrap
+
+knn.blad.boot <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.ipredknn, predict=my.predict, 
+            estimator="boot", est.para=control.errorest(nboot = 50), ile.sasiadow=1)$error
+
+####### .632+
+
+knn.blad.632 <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.ipredknn, predict=my.predict, 
+            estimator="632plus", est.para=control.errorest(nboot = 50), ile.sasiadow=1)$error
+
+
+tab.knn <- data.frame(c(knn.blad.cv,knn.blad.boot,knn.blad.632,1-accuracy.test.knn))
+tab.knn <- as.data.frame(t(tab.knn))
+
+colnames(tab.knn) <- c("5-cv","bootstrap", ".632+", "predykcje na zb. testowym")
+rownames(tab.knn) <- c("błąd klasyfikacji (k-nn)")
+
+tab <- xtable( tab.knn, digits = 3, include.rownames=FALSE, row.names = FALSE, caption = paste("Błędy klasyfikacji dla k-nn"), label = "tab:tabela_knn")
+print(tab, type = "latex", table.placement = "H")
+@
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\paragraph{Metoda drzew klasyfikacyjnych}\mbox{}\\
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Podobnie skonstruujemy model przy użyciu metody \textbf{drzew klasyfikacyjnych}. Najpierw korzystam z kryterium kosztu złożoności, aby wybrać optymalny rozmiar drzewa.
+
+<<B13a, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height = 3, fig.cap="Kryterium kosztu złożoności">>=
+# Konstrukcja drzewa klasyfikacyjnego
+set.seed(1234)
+
+model <- Type ~ .
+#model <- Type ~ Ba + Mg + Si + K + Fe # wszystkie cechy objaĹniajÄce
+
+# budujemy drzewo (parametry domyĹlne)
+Glass.tree.complex <- rpart(model, data=df.learn, cp=.01, minsplit=5, maxdepth=20)
+
+plotcp(Glass.tree.complex)
+cp.def <- Glass.tree.complex$cptable[which.min(Glass.tree.complex$cptable[,"xerror"]),"CP"]
+
+Glass.tree.simple <- rpart(model, data=df.learn, control=rpart.control(cp = cp.def))
+
+@
+
+Optymalną wartością \verb+cp+ jest \Sexpr{cp.def}.
+
+<<B13b, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height = 5, fig.cap="Drzewo klas. po zastosowaniu kryt. kosztu złożoności">>=
+# Konstrukcja drzewa klasyfikacyjnego
+# Uwaga -- zmiana parametrĂłw:
+# > help(rpart.control)
+# Cars93.tree <- rpart(model, data=learning.set, control=rpart.control(cp=.03, minsplit=10, maxdepth=10))
+
+# Podstaowwe informacje o modelu
+# print(Glass.tree.simple)
+# summary(Glass.tree.simple)
+
+# bardziej zaawansowana wizualizacja (pakiet rpart.plot)
+rpart.plot(Glass.tree.simple, main="Drzewo klasyfikacyjne dla danych Glass")
+
+@
+
+Sprawdzimy teraz, jaki wpływ na kształt drzewa klasyfikacyjnego ma dobór zmiennych objaśniających. Podobnie jak poprzednio, zbudujemy dwa nowe modele na podstawie zmiennych o najlepszych i najgorszych zdolnościach dyskryminacyjnych. Przeprowadzimy w tym celu ocenę przy użyciu \textbf{5-cross validation}.
+
+<<B17, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height=3, fig.cap="Porównanie błędów predykcji dla różnych modeli">>=
+my.predict  <- function(model, newdata) predict(model, newdata=newdata, type="class")
+my.ipredtree <- function(formula1, data1, cpdef) rpart(formula=formula1, data=data1, control=rpart.control(cp = cpdef))
+
+#errorest(Type ~., df.learn, model=my.ipredknn, predict=my.predict, estimator="cv",     est.para=control.errorest(k = 10), ile.sasiadow=5)
+#errorest(Type ~., df.learn, model=my.ipredknn, predict=my.predict, estimator="boot",   est.para=control.errorest(nboot = 50), ile.sasiadow=5)
+# errorest(Type ~., df.learn, model=my.ipredknn, predict=my.predict, estimator="632plus",est.para=control.errorest(nboot = 50), ile.sasiadow=5)
+
+
+cp.zakres <- (1:60/1000) + 0.01
+
+wyniki2 <-  sapply(cp.zakres, function(k)
+  errorest(Type ~., df, model=my.ipredtree, predict=my.predict, 
+           estimator="cv", est.para=control.errorest(k = 5), cp=k)$error)
+
+df.plot2 <- data.frame(x = c(cp.zakres), 
+                          y = c(wyniki2))
+
+model2 <- Type ~ Ba + Mg + K + Ca + Na + Al + RI
+
+wyniki4 <-  sapply(cp.zakres, function(k)
+  errorest(model2, df, model=my.ipredtree, predict=my.predict, estimator="cv", est.para=control.errorest(k = 5), cp=k)$error)
+
+df.plot4 <- data.frame(x = c(cp.zakres), 
+                          y = c(wyniki4))
+
+model2 <- Type ~ Al + RI + Si + Fe
+wyniki5 <-  sapply(cp.zakres, function(k)
+  errorest(model2, df, model=my.ipredtree, predict=my.predict, estimator="cv", est.para=control.errorest(k = 5), cp=k)$error)
+
+df.plot5 <- data.frame(x = c(cp.zakres), 
+                          y = c(wyniki5))
+
+ggplot(df.plot5, aes(x=x, y=y)) +
+  geom_line(aes(x=x, y=y, colour = "a")) +
+  geom_point(shape=21, color="black", fill="darkblue", size=6)+
+  geom_line(data=df.plot4, aes(x=x,y=y, colour = "b")) +
+  geom_point(data=df.plot4, aes(x=x,y=y), shape=21, color="black", fill="darkred", size=6) +
+  geom_line(data=df.plot2, aes(x=x,y=y, colour = "c")) +
+  geom_point(data=df.plot2, aes(x=x,y=y), shape=21, color="black", fill="lightblue", size=6) +
+  ggtitle("Ocena dokładności różnych modeli - 5-fold Cross-Validation") +
+  xlab("cp") +
+  theme(legend.position = "bottom") +
+  ylab("błąd klasyfikacji (5-fold Cross-Validation)") +
+  scale_colour_manual(name="Model",
+        values=c(a="darkblue", b="darkred", c="lightblue"),
+        labels=c(a="1. Type ~ Al + RI + Si + Fe ", b="2. Type ~ Ba + Mg + K + Ca + Na + Al + RI", c="3. Type ~ ."))
+@
+
+Model \verb+2+ nie uwzględnia zmiennych o najgorszych cechach dyskryminacyjnych -- krzemu oraz żelaza. Widzimy, że zdaje się on mieć mniejszy błąd klasyfikacyjny od pozostałych. Dlatego do dalszej analizy wybieramy właśnie ten model.
+
+<<B18, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height=3, fig.cap="Ocena dokładności klasyfikacji metodą bootstrap">>=
+wyniki3 <-  sapply(cp.zakres, function(k)
+  errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.ipredtree, predict=my.predict, 
+           estimator="boot", est.para=control.errorest(nboot = 50), cp=k)$error)
+
+df.plot3 <- data.frame(x = c(cp.zakres), 
+                          y = c(wyniki3))
+
+p3 <- ggplot(df.plot3, aes(x=x,y=y)) +
+  geom_line(color="darkred") +
+  geom_point(shape=21, color="black", fill="darkred", size=6) +
+  ggtitle("Ocena dokładności - bootstrap") +
+  xlab("cp") +
+  ylab("błąd klasyfikacji (bootstrap)")
+
+p3
+@
+
+<<B18xd, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height=3, fig.cap="Ocena dokładności klasyfikacji metodą .632+">>=
+wyniki4 <-  sapply(cp.zakres, function(k)
+  errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.ipredtree, predict=my.predict, 
+           estimator="632plus", est.para=control.errorest(nboot = 50), cp=k)$error)
+
+df.plot4 <- data.frame(x = c(cp.zakres), 
+                          y = c(wyniki4))
+
+p4 <- ggplot(df.plot4, aes(x=x,y=y)) +
+  geom_line(color="darkred") +
+  geom_point(shape=21, color="black", fill="darkred", size=6) +
+  ggtitle("Ocena dokładności - .632+") +
+  xlab("cp") +
+  ylab("błąd klasyfikacji (.632+)")
+
+p4
+
+
+K = 5 # K - cross validation
+n <- nrow(df)
+dlugosc <- n%/%K
+tablica_losowa <- runif(n)
+podzial <- rank(tablica_losowa)
+
+blok <- (podzial-1)%/%dlugosc + 1
+blok <- as.factor(blok) #która obserwacja pojawi się w którym bloku
+
+
+k.cross.tree <- function(df,model,cp){
+  bledy <- numeric(0)
+  for (k in 1:K){
+    df.test.1 <- df[blok==k,]
+    df.learn.1 <- df[blok!=k,]
+    
+    drzewo <- rpart(model, data=df.learn.1, method = "class", control=rpart.control(cp = cp))
+    predykcje <- predict(drzewo, newdata=df.test.1, type="class")
+    
+    labels.real <- df.test.1$Type
+    labels.predict <- predict(drzewo, newdata=df.test.1, type = "class")
+    tab <- table(labels.predict,labels.real)
+    accuracy.test.dk <- sum(diag(as.matrix(tab)))/length(labels.real)
+    
+    bledy <- rbind(bledy, 1 - accuracy.test.dk)
+  }
+  return(bledy)
+}
+
+cp1 <- 0.11
+cp2 <- 0.06
+
+bledy.cpdef <- k.cross.tree(df=df,model=model,cp=cp.def)
+bledy.cp1 <- k.cross.tree(df=df,model=model,cp=cp1)
+bledy.cp2 <- k.cross.tree(df=df,model=model,cp=cp2)
+
+bledy <- rbind(bledy.cpdef, mean(bledy.cpdef))
+bledy.cp1 <- rbind(bledy.cp1, mean(bledy.cp1))
+bledy.cp2 <- rbind(bledy.cp2, mean(bledy.cp2))
+
+tab <- data.frame(x = bledy, y = bledy.cp1, z = bledy.cp2)
+tab <- t(tab)
+
+
+colnames(tab) <- c("1", "2", "3", "4", "5", "Średnia")
+rownames(tab) <- c(paste("Błędne predykcje w bloku, cp=",round(cp.def,4)),paste("Błędy predykcyjne w bloku, cp=",cp1),paste("Błędy predykcyjne w bloku, cp=",cp2))
+tab1 <- xtable( tab, digits = 3, include.rownames=FALSE, row.names = FALSE, caption = paste("5-Cross validation dla drzew klasyfikacyjnych, różne cp"), label = "tab:tabela_knn")
+print(tab1, type = "latex", table.placement = "H")
+
+@
+
+Widzimy, że dla \verb+cp+ innych niż wybrane na mocy kryterium kosztu złożoności mamy większe rozbieżności pomiędzy wynikami w poszczególnych blokach. 
+
+<<B15, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Podział na zbiór uczący i testowy">>=
+ #drzewa decyzyjne
+model <- Type ~ Ba + Mg + K + Ca + Na + Al + RI
+
+Glass.tree.simple <- rpart(model, data=df.learn, control=rpart.control(cp = cp.def))
+
+
+labels.real <- df.learn$Type
+labels.predict <- predict(Glass.tree.simple, newdata=df.learn, type = "class")
+tab <- table(labels.predict,labels.real)
+accuracy.learn.dk <- sum(diag(as.matrix(tab)))/length(labels.real)
+
+tab <- tab %>%
+  kable(caption = "Macierz pomyłek dla zbioru uczącego (dk)", position='h') %>%
+  kable_styling()
+tab <- add_header_above(tab,c("Rzeczywiste etykietki","Prognozowane etkietki"=6))
+print(tab)
+@
+
+Dokładność klasyfikacji dla zbioru uczącego wynosi \Sexpr{accuracy.learn.dk}.
+
+<<B16, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Podział na zbiór uczący i testowy">>=
+labels.real <- df.test$Type
+labels.predict <- predict(Glass.tree.simple, newdata=df.test, type = "class")
+tab <- table(labels.predict,labels.real)
+accuracy.test.dk <- sum(diag(as.matrix(tab)))/length(labels.real)
+
+tab <- tab %>%
+  kable(caption = "Macierz pomyłek dla zbioru testowego (dk)", position='h') %>%
+  kable_styling()
+tab <- add_header_above(tab,c("Rzeczywiste etykietki","Prognozowane etkietki"=6))
+print(tab)
+@
+
+Dokładność klasyfikacji dla zbioru testowego wynosi \Sexpr{accuracy.test.dk}. Wyniki dla najlepszego modelu podsumowuje poniższa tabela:
+
+<<B21xxxxx, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Podział na zbiór uczący i testowy">>=
+
+###### 5 - cross validation
+
+dk.blad.cv <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.ipredtree, predict=my.predict, 
+           estimator="boot", est.para=control.errorest(nboot = 50), cp=cp.def)$error
+
+####### Bootstrap
+
+dk.blad.boot <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.ipredtree, predict=my.predict, 
+            estimator="boot", est.para=control.errorest(nboot = 50), cp=cp.def)$error
+
+####### .632+
+
+dk.blad.632 <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.ipredtree, predict=my.predict, 
+            estimator="632plus", est.para=control.errorest(nboot = 50), cp=cp.def)$error
+
+
+tab.dk <- data.frame(c(dk.blad.cv,dk.blad.boot,dk.blad.632,1-accuracy.test.dk))
+tab.dk <- as.data.frame(t(tab.dk))
+
+colnames(tab.dk) <- c("5-cv","bootstrap", ".632+", "predykcje na zb. testowym")
+rownames(tab.dk) <- c("błąd klasyfikacji (dk)")
+
+tab <- xtable( tab.dk, digits = 3, include.rownames=FALSE, row.names = FALSE, caption = paste("Błędy klasyfikacji dla drzewa klas."), label = "tab:tabela_dk")
+print(tab, type = "latex", table.placement = "H")
+@
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\paragraph{Naiwny klasyfikator bayesowski}\mbox{}\\
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+<<B30, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Podział na zbiór uczący i testowy">>=
+
+model <- Type ~ .
+#model <- Type ~ Ba + Mg + K + Ca + Na + Al + RI
+
+Glass.NB <- naiveBayes(Type ~., data = df.learn)
+
+my.predict  <- function(model, newdata) 
+{ predict(model, newdata=newdata, type="class") }
+
+my.naiveBayes <- function(formula, data) 
+{ naiveBayes(formula=formula,data=data)} 
+
+# budujemy model
+
+
+#errorest(Type ~., df.learn, model=my.ipredknn, predict=my.predict, estimator="cv",     est.para=control.errorest(k = 10), ile.sasiadow=5)
+#errorest(Type ~., df.learn, model=my.ipredknn, predict=my.predict, estimator="boot",   est.para=control.errorest(nboot = 50), ile.sasiadow=5)
+# errorest(Type ~., df.learn, model=my.ipredknn, predict=my.predict, estimator="632plus",est.para=control.errorest(nboot = 50), ile.sasiadow=5)
+
+blad.cv.1 <- errorest(Type ~ Al + RI + Si + Fe, df, model=my.naiveBayes, predict=my.predict, 
+            estimator="cv", est.para=control.errorest(k = 5))
+
+blad.cv.2 <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.naiveBayes, predict=my.predict, 
+            estimator="cv", est.para=control.errorest(k = 5))
+
+blad.cv.3 <- errorest(Type ~ ., df, model=my.naiveBayes, predict=my.predict, 
+            estimator="cv", est.para=control.errorest(k = 5))
+####### Bootstrap
+
+blad.boot.1 <- errorest(Type ~ Al + RI + Si + Fe, df, model=my.naiveBayes, predict=my.predict, 
+            estimator="boot", est.para=control.errorest(nboot = 50))
+
+blad.boot.2 <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.naiveBayes, predict=my.predict, 
+            estimator="boot", est.para=control.errorest(nboot = 50))
+
+blad.boot.3 <- errorest(Type ~ ., df, model=my.naiveBayes, predict=my.predict, 
+            estimator="boot", est.para=control.errorest(nboot = 50))
+
+####### .632+
+
+blad.632.1 <- errorest(Type ~ Al + RI + Si + Fe, df, model=my.naiveBayes, predict=my.predict, 
+            estimator="632plus", est.para=control.errorest(nboot = 50))
+
+blad.632.2 <- errorest(Type ~ Ba + Mg + K + Ca + Na + Al + RI, df, model=my.naiveBayes, predict=my.predict, 
+            estimator="632plus", est.para=control.errorest(nboot = 50))
+
+blad.632.3 <- errorest(Type ~ ., df, model=my.naiveBayes, predict=my.predict, 
+            estimator="632plus", est.para=control.errorest(nboot = 50))
+
+tab <- data.frame(c(blad.cv.1$error, blad.boot.1$error, blad.632.1$error),
+                  c(blad.cv.2$error, blad.boot.2$error, blad.632.2$error),
+                  c(blad.cv.3$error, blad.boot.3$error, blad.632.3$error))
+
+colnames(tab) <- c("Model 1", "Model 2", "Model 3")
+rownames(tab) <- c("5-cv", "bootstrap", ".632+")
+
+tab <- xtable( tab, digits = 3, include.rownames=FALSE, row.names = FALSE, caption = paste("Porównanie modeli"), label = "tab:tabela_knn")
+print(tab, type = "latex", table.placement = "H")
+@
+
+Oznaczenia modeli jak poprzednio -- model 1 jest zbudowany na podstawie zmiennych o najgorszych zdolnościach klasyfikacyjnych, model 2 na podstawie wszystkich zmiennych z wyjątkiem krzemu i żelaza, natomiast model 3 ze wszystkich zmiennych. Również widzimy, że model 2 wypadł najlepiej. Skonstruujemy macierze pomyłek dla tego klasyfikatora.
+
+<<B31, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Podział na zbiór uczący i testowy">>=
+ #drzewa decyzyjne
+model <- Type ~ Ba + Mg + K + Ca + Na + Al + RI
+
+Glass.NB <- naiveBayes(model, data = df.learn)
+
+labels.real <- df.learn$Type
+labels.predict <- predict(Glass.NB, newdata=df.learn, type = "class")
+tab <- table(labels.predict,labels.real)
+accuracy.learn.NB <- sum(diag(as.matrix(tab)))/length(labels.real)
+
+tab <- tab %>%
+  kable(caption = "Macierz pomyłek dla zbioru uczącego (NB)", position='h') %>%
+  kable_styling()
+tab <- add_header_above(tab,c("Rzeczywiste etykietki","Prognozowane etkietki"=6))
+print(tab)
+@
+
+Dokładność klasyfikacji dla zbioru uczącego wynosi \Sexpr{accuracy.learn.NB}.
+
+<<B32, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Podział na zbiór uczący i testowy">>=
+labels.real <- df.test$Type
+labels.predict <- predict(Glass.NB, newdata=df.test, type = "class")
+tab <- table(labels.predict,labels.real)
+accuracy.test.NB <- sum(diag(as.matrix(tab)))/length(labels.real)
+
+tab <- tab %>%
+  kable(caption = "Macierz pomyłek dla zbioru testowego (NB)", position='h') %>%
+  kable_styling()
+tab <- add_header_above(tab,c("Rzeczywiste etykietki","Prognozowane etkietki"=6))
+print(tab)
+@
+
+Dokładność klasyfikacji dla zbioru testowego wynosi \Sexpr{accuracy.test.NB}. Wyniki podsumowuje poniższa tabela:
+
+<<B33, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Podział na zbiór uczący i testowy">>=
+
+###### 5 - cross validation
+
+NB.blad.cv <- blad.cv.2$error
+
+####### Bootstrap
+
+NB.blad.boot <- blad.boot.2$error
+
+####### .632+
+
+NB.blad.632 <- blad.632.2$error
+
+
+tab.NB <- data.frame(c(NB.blad.cv,NB.blad.boot,NB.blad.632,1-accuracy.test.NB))
+tab.NB <- as.data.frame(t(tab.NB))
+
+colnames(tab.NB) <- c("5-cv","bootstrap", ".632+", "predykcje na zb. testowym")
+rownames(tab.NB) <- c("błąd klasyfikacji (NB)")
+
+tab <- xtable( tab.NB, digits = 3, include.rownames=FALSE, row.names = FALSE, caption = paste("Błędy klasyfikacji dla NB"), label = "tab:tabela_NB")
+print(tab, type = "latex", table.placement = "H")
+@
+
+\newpage
+%%%%%%%%%%%%%%%%%%%%%%%%%
+\paragraph{Porównanie wyników}\mbox{}\\
+%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Umieścimy teraz w tabeli błędy klasyfikacji dla najlepszych modeli uzyskanych poprzednimi metodami.
+
+<<B41, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Podział na zbiór uczący i testowy">>=
+
+
+tab.new.knn <- as.numeric(tab.knn[,1:4])
+tab.new.dk <- as.numeric(tab.dk[,1:4])
+tab.new.NB <- as.numeric(tab.NB[,1:4])
+
+tab.new <- data.frame(c(tab.new.knn),
+           c(tab.new.dk),
+           c(tab.new.NB))
+
+tab.new <- as.data.frame(t(tab.new))
+
+colnames(tab.new) <- c("5-cv","bootstrap", ".632+", "predykcje na zb. testowym")
+rownames(tab.new) <- c("błąd klasyfikacji (k-nn)", "błąd klasyfikacji (dk)", "błąd klasyfikacji (NB)")
+
+tab <- xtable(tab.new, digits = 3, include.rownames=FALSE, row.names = FALSE, caption = paste("Porównanie uzyskanych klasyfikatorów"), label = "tab:tabela_NB")
+print(tab, type = "latex", table.placement = "H")
+@
+
+Widzimy, że najlepsze rezultaty uzyskaliśmy metodą k-najbliższych sąsiadów, natomiast najgorsze z wykorzystaniem naiwnego klasyfikatora bayesowskiego.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Podsumowanie}
+Poniżej wypunktujemy najważniejsze wnioski, jakie można wyciągnąć z przeprowadzanych analiz:
+\begin{itemize}
+\item uwzględnienie składników wielomianowych 2 stopnia w modelu regresji liniowej pozwala uzyskać zdecydowanie lepszą dokładność klasyfikacji,
+\item nieuwzględnienie cech o najgorszych zdolnościach dyskryminacyjnych pozytywnie wpłynęło na dokładność klasyfikatorów uzyskanych metodami k-najbliższych sąsiadów, drzew klasyfikacyjnych oraz naiwnego klasyfikatora beysowskiego, 
+\item metody k-cross validation, bootstrap, .632+ oraz macierze pomyłek pozwalają na porównywanie klasyfikatorów uzyskanych różnymi metodami,
+\item wybór odpowiedniej liczby sąsiadów ma kluczowe znaczenie dla otrzymanych rezultatów metodą k-nn,
+\item wybór optymalnego parametru \verb+cp+ na podstawie kryterium kosztu złożoności sprawia, że możemy łatwiej szacować błędy predykcji.
+\end{itemize}
+
+
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\end{document}

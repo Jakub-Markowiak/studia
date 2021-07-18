@@ -1,0 +1,938 @@
+\documentclass[12pt, a4paper]{article}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% dodatkowe pakiety LaTeX'a
+\usepackage[OT4]{polski}
+\usepackage[utf8]{inputenc}
+\usepackage[top=2.5cm, bottom=2.5cm, left=2cm, right=2cm]{geometry}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage[colorlinks=true, linkcolor=blue]{hyperref}
+\usepackage{bbm}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ustawienia globalne
+<<ustawienia_globalne, echo=FALSE, warning=FALSE, message=FALSE>>=
+library(cluster)
+library(knitr)
+library(kableExtra)
+library(dplyr)
+library(ggplot2)
+library(grid)
+library(gridExtra)
+library(ggpubr)
+library(arules)
+library(reshape2)
+library(xtable) #pakiet do tworzenia tabel w formacie LaTeX'a
+library(RColorBrewer)
+library(ggrepel)
+library(factoextra)
+library(corrplot)
+library(seriation)
+library(rgl)
+library(ggalt)
+library(cowplot)
+library(magick)
+
+opts_chunk$set(fig.path='figure/', fig.align='center', fig.pos='H',fig.width=7, fig.height=4)
+
+# UWAGA: w razie potrzeby można zmieniać te ustawienia w danym chunk'u!
+@
+
+
+\begin{document}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% strona tytulowa
+\title{Sprawozdanie 2}
+\author{Jakub Markowiak \\ album 255705}
+\maketitle
+\tableofcontents
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Krótki opis zagadnienia}
+
+W tym sprawozdaniu zajmiemy się porównaniem nienadzorowanych metod dyskretyzacji oraz zbadamy, jaki wpływ na wyniki dyskretyzacji mają zdolności dyskryminacyjne poszczegółnych cech. Następnie, wykorzystując metodę analizy składowych głównych, przeanalizujemy dane \verb+state.x77+ i spróbujemy zwizualizować zależności między poszczególnymi cechami. Sprawdzimy też jak standaryzacja wpływa na analizę PCA. Przeprowadzimy również skalowanie wielowymiarowe dla danych \verb+best in show+ i spróbujemy zwizualizować podobieństwa pomiędzy różnymi rasami psów.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Opis eksperymentów/analiz}
+
+Przeprowadzimy następujące analizy i eksperymenty:
+\begin{enumerate}
+  \item Porównanie nienadzorowanych metod dyskretyzacji,
+  \item analiza składowych głównych dla danych state.x77,
+  \item skalowanie wielowymiarowe dla danych \verb+best in show+.
+\end{enumerate}
+
+
+\section{Wyniki}
+\subsection{Porównanie nienadzorowanych metod dyskretyzacji}
+
+Wczytujemy dane \verb+iris+ z pakietu \verb+datasets+. Korzystając z wykresów rozrzutu porównamy zdolności dyskryminacyjne poszczególnych cech.
+<<A1, echo=FALSE, eval=TRUE, results='asis', message=FALSE,  fig.cap="Wykresy rozrzutu dla kolejnych cech">>=
+library(datasets)
+data("iris")
+attach(iris)
+cbbPalette <- c("#CC79A7", "#E69F00", "#56B4E9") #kolorowanie wykresów
+
+x <- iris[,"Sepal.Width"]
+y <- runif(length(x)) #losowa oś y
+
+#wykresy rozrzutu dla kolejnych cech
+
+p1 <- ggplot(iris) +
+  geom_point(aes(
+    x = Sepal.Length,
+    y = y,
+    colour = Species
+  )) +
+  scale_colour_manual(name = 'Species', values = setNames(cbbPalette, c(T, F))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.3),
+        legend.position="none") +
+  xlab("Sepal.Length")
+
+p2 <- ggplot(iris) +
+  geom_point(aes(
+    x = Sepal.Width,
+    y = y,
+    colour = Species
+  )) +
+  scale_colour_manual(name = 'Species', values = setNames(cbbPalette, c(T, F))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.3),
+        legend.position="none") +
+  xlab("Sepal.Width")
+
+p3 <- ggplot(iris) +
+  geom_point(aes(
+    x = Petal.Length,
+    y = y,
+    colour = Species
+  )) +
+  scale_colour_manual(name = 'Species', values = setNames(cbbPalette, c(T, F))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.3),
+        legend.position="none") +
+  xlab("Petal.Length")
+
+p4 <- ggplot(iris) +
+  geom_point(aes(
+    x = Petal.Width,
+    y = y,
+    colour = Species
+  )) +
+  scale_colour_manual(name = 'Species', values = setNames(cbbPalette, c(T, F))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.3),
+        legend.position="none") +
+  xlab("Petal.Width")
+
+ggarrange(p1, p2, p3, p4, ncol=2, nrow=2, common.legend = TRUE, legend="bottom")
+@
+
+Najlepsze zdolności dyskryminacyjne wydają się mieć \verb+Petal.Length+ oraz \verb+Petal.Width+. Sporządźmy więc i porównajmy wykresy pudełkowe tych zmiennych. Podobnie analizujemy \verb+Sepal.Width+ i \verb+Sepal.Length+, aby wyłonić tę o gorszych zdolnościach dyskyminacyjnych.
+
+<<A2, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.cap="Wykresy pudelkowe dla Petal.Length i Petal.Width">>=
+cbbPalette <- c("#CC79A7", "#E69F00", "#56B4E9")
+
+p1 <- ggplot(iris) +
+  geom_boxplot(aes(
+    x = Petal.Length,
+    y = Species,
+    colour = Species
+  )) +
+  scale_colour_manual(name = 'Species', values = setNames(cbbPalette, c(T, F))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.3),
+        legend.position="none",
+        axis.text.y = element_blank()) +
+  xlab("Petal.Length")
+
+p2 <- ggplot(iris) +
+  geom_boxplot(aes(
+    x = Petal.Width,
+    y = Species,
+    colour = Species
+  )) +
+  scale_colour_manual(name = 'Species', values = setNames(cbbPalette, c(T, F))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.3),
+        legend.position="none",
+        axis.text.y = element_blank()) +
+  xlab("Petal.Width")
+
+
+p3 <- ggplot(iris) +
+  geom_boxplot(aes(
+    x = Sepal.Length,
+    y = Species,
+    colour = Species
+  )) +
+  scale_colour_manual(name = 'Species', values = setNames(cbbPalette, c(T, F))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.3),
+        legend.position="none",
+        axis.text.y = element_blank()) +
+  xlab("Sepal.Length")
+
+p4 <- ggplot(iris) +
+  geom_boxplot(aes(
+    x = Sepal.Width,
+    y = Species,
+    colour = Species
+  )) +
+  scale_colour_manual(name = 'Species', values = setNames(cbbPalette, c(T, F))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.3),
+        legend.position="none",
+        axis.text.y = element_blank()) +
+  xlab("Sepal.Width")
+ggarrange(p1, p2, p3, p4, ncol=2, nrow=2, common.legend = TRUE, legend="bottom")
+@
+
+Wyciągamy wniosek, że najlepsze zdolności dyskryminacyjne ma zmienna \verb+Petal.Length+. Najgorsze zdolności dyskryminacyjne ma natomiast \verb+Sepal.Width+.
+
+Wybierzmy teraz cechę \verb+Petal.Length+ i \verb+Sepal.Width+ i porównamy dla nich nienadzorowane metody dyskretyzacji.
+
+<<A3, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.cap="Dyskretyzacja Petal.Length">>=
+cbbPalette <- c("#CC79A7", "#E69F00", "#56B4E9")
+###Najpierw Petal.Length
+x <- iris[,"Petal.Length"]
+y <- runif(length(x))
+
+x.disc.invl <- discretize(x, method = "interval", breaks = 3) #equal interval width
+breaks.invl <- attributes(x.disc.invl)
+vec.invl <- unlist(breaks.invl[3])
+
+p1 <- ggplot(iris) +
+  geom_point(aes(
+    x = x,
+    y = y,
+    colour = Species
+  )) +
+  scale_colour_manual(name = 'Species', values = setNames(cbbPalette, c(T, F))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.3),
+        legend.position="none") +
+  xlab("Petal.Length") +
+  geom_vline(xintercept=vec.invl) +
+  ggtitle("Metoda: equal interval")
+
+
+x.disc.freq <- discretize(x, method = "frequency", breaks = 3) #frequency
+breaks.freq <- attributes(x.disc.freq)
+vec.freq <- unlist(breaks.freq[3])
+p2 <- ggplot(iris) +
+  geom_point(aes(
+    x = x,
+    y = y,
+    colour = Species
+  )) +
+  scale_colour_manual(name = 'Species', values = setNames(cbbPalette, c(T, F))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.3),
+        legend.position="none") +
+  xlab("Petal.Length") +
+  geom_vline(xintercept=vec.freq) +
+  ggtitle("Metoda: equal frequency")
+
+
+x.disc.km <- discretize(x, method = "cluster", breaks = 3) #k-means clustering
+breaks.km <- attributes(x.disc.km)
+vec.km <- unlist(breaks.km[3])
+p3 <- ggplot(iris) +
+  geom_point(aes(
+    x = x,
+    y = y,
+    colour = Species
+  )) +
+  scale_colour_manual(name = 'Species', values = setNames(cbbPalette, c(T, F))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.3),
+        legend.position="none") +
+  xlab("Petal.Length") +
+  geom_vline(xintercept=vec.km) +
+  ggtitle("Metoda: k-means clustering")
+
+
+x.disc.user <- discretize(x, method = "fixed", breaks=c(2,4.8)) #wybór własnych przedziałów
+breaks.user <- attributes(x.disc.user)
+vec.user <- unlist(breaks.user[3])
+
+p4 <- ggplot(iris) +
+  geom_point(aes(
+    x = x,
+    y = y,
+    colour = Species
+  )) +
+  scale_colour_manual(name = 'Species', values = setNames(cbbPalette, c(T, F))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.3),
+        legend.position="none") +
+  xlab("Petal.Length") +
+  geom_vline(xintercept=vec.user) +
+  ggtitle("Metoda: wlasny wybor przedzialow")
+
+ggarrange(p1, p2, p3, p4, ncol=2, nrow=2, common.legend = TRUE, legend="bottom")
+@
+
+Analogiczne wykresy rysujemy dla cechy \verb+Sepal.Width+.
+
+<<A4, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.cap="Dyskretyzacja Sepal.Width">>=
+cbbPalette <- c("#CC79A7", "#E69F00", "#56B4E9")
+
+###Najpierw Sepal.Width
+x <- iris[,"Sepal.Width"]
+y <- runif(length(x))
+
+x.disc.invl <- discretize(x, method = "interval", breaks = 3) #equal interval width
+breaks.invl <- attributes(x.disc.invl)
+vec.invl <- unlist(breaks.invl[3])
+
+p1 <- ggplot(iris) +
+  geom_point(aes(
+    x = x,
+    y = y,
+    colour = Species
+  )) +
+  scale_colour_manual(name = 'Species', values = setNames(cbbPalette, c(T, F))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.3),
+        legend.position="none") +
+  xlab("Sepal.Width") +
+  geom_vline(xintercept=vec.invl) +
+  ggtitle("Metoda: equal interval")
+
+
+x.disc.freq <- discretize(x, method = "frequency", breaks = 3) #frequency
+breaks.freq <- attributes(x.disc.freq)
+vec.freq <- unlist(breaks.freq[3])
+p2 <- ggplot(iris) +
+  geom_point(aes(
+    x = x,
+    y = y,
+    colour = Species
+  )) +
+  scale_colour_manual(name = 'Species', values = setNames(cbbPalette, c(T, F))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.3),
+        legend.position="none") +
+  xlab("Sepal.Width") +
+  geom_vline(xintercept=vec.freq) +
+  ggtitle("Metoda: equal frequency")
+
+
+x.disc.km <- discretize(x, method = "cluster", breaks = 3) #k-means clustering
+breaks.km <- attributes(x.disc.km)
+vec.km <- unlist(breaks.km[3])
+p3 <- ggplot(iris) +
+  geom_point(aes(
+    x = x,
+    y = y,
+    colour = Species
+  )) +
+  scale_colour_manual(name = 'Species', values = setNames(cbbPalette, c(T, F))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.3),
+        legend.position="none") +
+  xlab("Sepal.Width") +
+  geom_vline(xintercept=vec.km) +
+  ggtitle("Metoda: k-means clustering")
+
+
+x.disc.user <- discretize(x, method = "fixed", breaks=c(3,4)) #categories specifies interval boundaries
+breaks.user <- attributes(x.disc.user)
+vec.user <- unlist(breaks.user[3])
+
+p4 <- ggplot(iris) +
+  geom_point(aes(
+    x = x,
+    y = y,
+    colour = Species
+  )) +
+  scale_colour_manual(name = 'Species', values = setNames(cbbPalette, c(T, F))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.3),
+        legend.position="none") +
+  xlab("Sepal.Width") +
+  geom_vline(xintercept=vec.user) +
+  ggtitle("Metoda: wlasny wybor przedzialow")
+
+ggarrange(p1, p2, p3, p4, ncol=2, nrow=2, common.legend = TRUE, legend="bottom")
+@
+
+Wyniki dla oby zmiennych wyraźnie się różnią. Dyskretyzacja zmniennej o słabej zdolności dyskryminacyjnej przyniosła niewielkie skutki, natomiast dyskretyzacja zmiennej o dobrej zdolności dyskryminacyjnej pozwoliła nam dobrze dopasować punkty przedziału. Sprawdzimy, jaki wpływ na przeprowadzoną analizę mają obserwacje odstające.
+Dla \verb+Petal.Length+:
+<<A5, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.cap="Dyskretyzacja Petal.Length z obserwacjami odstającymi">>=
+cbbPalette <- c("#CC79A7", "#E69F00", "#56B4E9")
+###Najpierw Petal.Length
+x <- iris[,"Petal.Length"]
+y <- runif(length(x))
+x[which.min(x)] <- min(x) - IQR(x)
+x[which.max(x)] <- max(x) + IQR(x)
+
+x.disc.invl <- discretize(x, method = "interval", breaks = 3) #equal interval width
+breaks.invl <- attributes(x.disc.invl)
+vec.invl <- unlist(breaks.invl[3])
+
+p1 <- ggplot(iris) +
+  geom_point(aes(
+    x = x,
+    y = y,
+    colour = Species
+  )) +
+  scale_colour_manual(name = 'Species', values = setNames(cbbPalette, c(T, F))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.3),
+        legend.position="none") +
+  xlab("Petal.Length") +
+  geom_vline(xintercept=vec.invl) +
+  ggtitle("Metoda: equal interval")
+
+
+x.disc.freq <- discretize(x, method = "frequency", breaks = 3) #frequency
+breaks.freq <- attributes(x.disc.freq)
+vec.freq <- unlist(breaks.freq[3])
+p2 <- ggplot(iris) +
+  geom_point(aes(
+    x = x,
+    y = y,
+    colour = Species
+  )) +
+  scale_colour_manual(name = 'Species', values = setNames(cbbPalette, c(T, F))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.3),
+        legend.position="none") +
+  xlab("Petal.Length") +
+  geom_vline(xintercept=vec.freq) +
+  ggtitle("Metoda: equal frequency")
+
+
+x.disc.km <- discretize(x, method = "cluster", breaks = 3) #k-means clustering
+breaks.km <- attributes(x.disc.km)
+vec.km <- unlist(breaks.km[3])
+p3 <- ggplot(iris) +
+  geom_point(aes(
+    x = x,
+    y = y,
+    colour = Species
+  )) +
+  scale_colour_manual(name = 'Species', values = setNames(cbbPalette, c(T, F))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.3),
+        legend.position="none") +
+  xlab("Petal.Length") +
+  geom_vline(xintercept=vec.km) +
+  ggtitle("Metoda: k-means clustering")
+
+
+x.disc.user <- discretize(x, method = "fixed", breaks=c(2,4.8)) #categories specifies interval boundaries
+breaks.user <- attributes(x.disc.user)
+vec.user <- unlist(breaks.user[3])
+
+p4 <- ggplot(iris) +
+  geom_point(aes(
+    x = x,
+    y = y,
+    colour = Species
+  )) +
+  scale_colour_manual(name = 'Species', values = setNames(cbbPalette, c(T, F))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.3),
+        legend.position="none") +
+  xlab("Petal.Length") +
+  geom_vline(xintercept=vec.user) +
+  ggtitle("Metoda: wlasny wybor przedzialow")
+
+ggarrange(p1, p2, p3, p4, ncol=2, nrow=2, common.legend = TRUE, legend="bottom")
+@
+
+Analogiczne wykresy rysujemy dla cechy \verb+Sepal.Width+.
+
+<<A6, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.cap="Dyskretyzacja Sepal.Width z obserwacjami odstającymi">>=
+cbbPalette <- c("#CC79A7", "#E69F00", "#56B4E9")
+
+###Najpierw Sepal.Width
+x <- iris[,"Sepal.Width"]
+y <- runif(length(x))
+x[which.min(x)] <- min(x) - IQR(x)
+x[which.max(x)] <- max(x) + IQR(x)
+
+x.disc.invl <- discretize(x, method = "interval", breaks = 3) #equal interval width
+breaks.invl <- attributes(x.disc.invl)
+vec.invl <- unlist(breaks.invl[3])
+
+p1 <- ggplot(iris) +
+  geom_point(aes(
+    x = x,
+    y = y,
+    colour = Species
+  )) +
+  scale_colour_manual(name = 'Species', values = setNames(cbbPalette, c(T, F))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.3),
+        legend.position="none") +
+  xlab("Sepal.Width") +
+  geom_vline(xintercept=vec.invl) +
+  ggtitle("Metoda: equal interval")
+
+
+x.disc.freq <- discretize(x, method = "frequency", breaks = 3) #frequency
+breaks.freq <- attributes(x.disc.freq)
+vec.freq <- unlist(breaks.freq[3])
+p2 <- ggplot(iris) +
+  geom_point(aes(
+    x = x,
+    y = y,
+    colour = Species
+  )) +
+  scale_colour_manual(name = 'Species', values = setNames(cbbPalette, c(T, F))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.3),
+        legend.position="none") +
+  xlab("Sepal.Width") +
+  geom_vline(xintercept=vec.freq) +
+  ggtitle("Metoda: equal frequency")
+
+
+x.disc.km <- discretize(x, method = "cluster", breaks = 3) #k-means clustering
+breaks.km <- attributes(x.disc.km)
+vec.km <- unlist(breaks.km[3])
+p3 <- ggplot(iris) +
+  geom_point(aes(
+    x = x,
+    y = y,
+    colour = Species
+  )) +
+  scale_colour_manual(name = 'Species', values = setNames(cbbPalette, c(T, F))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.3),
+        legend.position="none") +
+  xlab("Sepal.Width") +
+  geom_vline(xintercept=vec.km) +
+  ggtitle("Metoda: k-means clustering")
+
+
+x.disc.user <- discretize(x, method = "fixed", breaks=c(3,4)) #categories specifies interval boundaries
+breaks.user <- attributes(x.disc.user)
+vec.user <- unlist(breaks.user[3])
+
+p4 <- ggplot(iris) +
+  geom_point(aes(
+    x = x,
+    y = y,
+    colour = Species
+  )) +
+  scale_colour_manual(name = 'Species', values = setNames(cbbPalette, c(T, F))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.3),
+        legend.position="none") +
+  xlab("Sepal.Width") +
+  geom_vline(xintercept=vec.user) +
+  ggtitle("Metoda: wlasny wybor przedzialow")
+
+ggarrange(p1, p2, p3, p4, ncol=2, nrow=2, common.legend = TRUE, legend="bottom")
+detach(iris)
+@
+
+Dla metody \verb+equal interval width+ punkty przedziału nie są odporne na obserwacje odstające, natomiast lepiej radzi sobie z nimi algorytm \verb+equal frequency+ oraz \verb+k-means clustering+. Natomiast oczywiście obserwacje odstające nie mają wpływu na punkty przedziału, gdy ręcznie deklarujemy w którym miejscu te punkty mają się pojawić.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Analiza składowych głównych dla danych state.x77}
+Wczytujemy dane \verb+state.x77+. Sporządzamy wykresy pudełkowe i obserwujemy, że dane zostały zgromadzone w różnych skalach i jednostkach, zatem konieczna jest standaryzacja.
+
+<<B1, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.width=6, fig.cap="Wykresy pudełkowe przed i po wykonaniu standaryzacji">>=
+data(state)
+df <- as.data.frame(state.x77)
+df.m <- melt(df)
+
+cbbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
+p1 <- ggplot(df.m, aes(x = variable, y = value)) +
+  geom_boxplot(color="black", fill=cbbPalette)
+df.scaled <- scale(df) #standaryzacja
+#df.scaled <- df
+
+df.scaled.m <- melt(df.scaled) #do wykonania wykresu
+
+p2 <- ggplot(df.scaled.m, aes(x = Var2, y = value)) +
+  geom_boxplot(color="black", fill=cbbPalette) +
+  xlab("variable")
+
+ggarrange(p1, p2, ncol=1, nrow=2)
+@
+
+Wyznaczymy teraz składowe główne i sprawdzimy jakie wartości przyjmują.
+
+<<B2, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.width=6, fig.height=2.5, fig.cap="Wykresy pudełkowe dla składowych głównych">>=
+mypal <- brewer.pal(n = 8, name="YlOrRd")
+
+df <- df.scaled
+df.after.pca <- prcomp(df, retx=T, center=T)
+
+pca.df <- as.data.frame(df.after.pca$x[,1:8])
+pca.df.m <- melt(pca.df)
+
+p1 <- ggplot(pca.df.m, aes(x= variable, y = value)) +
+  geom_boxplot(color="black", fill=mypal)
+
+p1
+@
+
+Przeanalizujemy teraz pierwsze trzy składowe i sprawdzimy, które cechy mają największą wagę.
+
+<<B3, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.width=6, fig.height=2.5, fig.cap="Wykresy pudełkowe dla składowych głównych">>=
+loadings <- df.after.pca$rotation #matrix of variable loading
+l <- loadings; class(l) <- "matrix"
+M <- as.matrix(loadings[,1:3])
+analysis <- as.data.frame(M)
+
+tab <- xtable( analysis, digits = 6, include.rownames=TRUE, row.names = TRUE, caption = "PC1, PC2, PC3")
+print(tab, type = "latex", table.placement = "H")
+@
+
+Pierwsza składowa największą wagę nadaje analfabetyzmowi, druga mocno charakteryzuje dochód na jednego mieszkańca oraz powierzchnię stanu, a trzecia szacowaną liczbie mieszkańców. Zastanowimy się teraz, ile składowych głównych odpowiada kolejno $80\%$ i $90\%$ zmienności.
+
+<<B4, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.height=2.5, fig.cap="Zmienność składowych głównych">>=
+variance <- (df.after.pca$sdev ^2)/sum(df.after.pca$sdev^2)
+v <- data.frame(row.names=c("PC1", "PC2", "PC3", "PC4", "PC5", "PC6", "PC7", "PC8"),variance)
+
+##Wykres wariancji dla poszczególnych składowych głównych
+p1 <- ggplot(v, aes(x = row.names(v), y = variance )) +
+  geom_bar(stat = "identity", fill=mypal) +
+  xlab("") +
+  ylab("Wariancja") +
+  ggtitle("Wariancja dla kolejnych składowych głównych") +
+  theme(plot.title = element_text(size = 8))
+
+##Wykres łącznej zmienności dla n pierwszych składowych głównych
+cumulative.variance <- cumsum(variance)
+c.v <- data.frame(row.names=c(1:8),cumulative.variance)
+p2 <- ggplot(c.v, aes(x = row.names(c.v), y = cumulative.variance )) +
+  geom_bar(stat = "identity", fill=mypal) +
+  geom_hline(yintercept = 0.8, color="black", linetype = "dashed") + 
+  geom_hline(yintercept = 0.9, color="black", linetype = "dashed") +
+  xlab("n") +
+  ylab("Całkowita wariancja") +
+  ggtitle("Całkowita wariancja dla n pierwszych składowych") +
+  scale_y_continuous(breaks=c(1:10)/10) +
+  theme(plot.title = element_text(size = 8))
+
+ggarrange(p1,p2)
+@
+
+Z wykresu odczytujemy, że aby wyjaśnić $80\%$ zmienności, potrzebujemy $4$ pierwszych składowych głównych, natomiast dla wyjaśnienia $90\%$ zmienności potrzebujemy $5$ składowych głównych. Przedstawimy teraz wykresy rozrzutu dla pierwszych dwóch składowych głównych ($65\%$ zmienności).
+
+<<B5, echo=FALSE, eval=TRUE, results='asis', message=FALSE, warning=FALSE, fig.cap="Rozrzut PC1 i PC2">>=
+x1 <- df.after.pca$x[,1]
+y1 <- df.after.pca$x[,2]
+
+x1.m <- melt(x1)
+y1.m <- melt(y1)
+
+df.pca2 <- data.frame(x =x1.m, y=y1.m) 
+
+mypal <- rainbow(9)
+Names <- row.names(df.pca2)
+
+
+###Wykres pc1, pc2
+p1 <- ggplot(df.pca2) +
+  geom_point(aes(
+    x = value,
+    y = value.1,
+   colour = state.division
+  )) +
+  xlab("PC1") + 
+  ylab("PC2") +
+  geom_label_repel(aes(x = value, y = value.1, label = state.abb),
+                box.padding   = 0.35, 
+                point.padding = 0.5,
+                segment.color = 'grey50') +
+    theme(legend.position = "right") +
+  labs(colour = "State division")
+p1
+@
+
+Zauważamy, że mocno odstająca od reszty \verb+Alaska+ charakteryzuje się największą powierzchnią i dochodem na mieszkańca, natomiast również odstająca \verb+California+ ma największą populację, ale również trzecią największą powierzchnię, a te zmienne mają duże wagi dla \verb+PC1+ i \verb+PC2+. Po prawej stronie wykresu widzimy \verb+Alabamę+, \verb+Louisianę+ oraz \verb+Mississippi+, które charakteryzują się największym poziomem analfabetyzmu, który ma mocną wagę w \verb+PC1+. Sprawdzimy, korzystając z dwuwykresu, czy nasze obserwacje są poprawne.
+
+<<B6, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.cap="Dwuwykres PC1 i PC2">>=
+fviz_pca_biplot(df.after.pca)
+@
+
+Faktycznie można zauważyć, że występują spore zależności między zmiennymi. Im wyższy dochód na mieszkańca, tym mniejszy analfabetyzm, im większy analfabetyzm, tym większy współczynnik morderstw, itd. Zauważalna jest tendencja, że im bardziej na południe stanów, tym gorsze warunki życia, natomiast na zachodzie warunki życia są zauważalnie lepsze - szczególnie z grupy \verb+Mountain+ i \verb+Pacific+. Podobne wyniki odczytamy z macierzy korelacji.
+
+<<B7, echo=FALSE, eval=TRUE, results='asis', message=FALSE, fig.cap="Macierz kowariancji">>=
+data <- as.data.frame(state.x77)
+COR <- as.data.frame(cor(data))
+
+tab <- xtable(COR, digits = 3, include.rownames=TRUE, row.names = TRUE, caption = "Macierz kowariancji")
+print(tab, type = "latex", table.placement = "H")
+@
+
+Na podstawie powyższych analiz możemy zauważyć, że wystarczyły zaledwie dwie składowe główne, aby otrzymać zadowalającą reprezentację danych. Obserwacje wykonane poprzez analizę \verb+PCA+ pokrywają się chociażby z informacjami zawartymi w macierzy kowariancji. Ważnym wnioskiem jest również fakt, że nie przeprowadzając standaryzacji danych, otrzymalibyśmy jedną składową o niemal całkowitej zmienności. Wynika to z jednostki, którą mierzona była cecha \verb+Area+ -- wyraźnie dominuje ona pozostałe zmienne.
+
+<<B8, echo=FALSE, eval=TRUE, results='asis', fig.height=2.5, message=FALSE, fig.cap="PCA bez standaryzacji">>=
+df <- as.data.frame(state.x77)
+
+df.after.pca <- prcomp(df, retx=T, center=T)
+
+pca.df <- as.data.frame(df.after.pca$x[,1:8])
+
+variance <- (df.after.pca$sdev ^2)/sum(df.after.pca$sdev^2)
+v <- data.frame(row.names=c("PC1", "PC2", "PC3", "PC4", "PC5", "PC6", "PC7", "PC8"),variance)
+
+##Wykres wariancji dla poszczególnych składowych głównych
+p1 <- ggplot(v, aes(x = row.names(v), y = variance )) +
+  geom_bar(stat = "identity") +
+  xlab("") +
+  ylab("Wariancja") +
+  ggtitle("Wariancja dla kolejnych składowych głównych bez standaryzacji") +
+  theme(plot.title = element_text(size = 8))
+p1
+@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Skalowanie wielowymiarowe}
+
+Wczytujemy dane \verb+best_in_show+ (https://informationisbeautiful.net/data/), które zawierają informacje o różnych rasach psów. Wybieram do analizy następujące cechy: \verb+category+ (typ rasy), \verb+datadog score+ (pozycja w rankingu ras), \verb+popularity in US+ (popularność rasy w USA), \verb+lifetime cost+ (łączny koszt utrzymania przez całe życie psa), \verb+intelligence category+ (kategoria inteligencji), \verb+size category+ (rozmiar) oraz \verb+price bracket+ (cena zakupu). Pozbywamy się również brakujących obserwacji oraz ręcznie poprawiamy typy zmiennych, które zostały nieodpowiednio odczytane w trakcie importowania.
+
+<<C1, echo=FALSE, eval=TRUE, results='asis', message=FALSE, warning=FALSE, fig.cap="Macierz kowariancji">>=
+df <- read.csv("best_in_show.csv", row.names="Dog.breed", stringsAsFactors=TRUE)
+
+###Zostawiam tylko istotne zmienne: category, datadog score, popularity in US, lifetime cost, intelligence category, size.category, longevity, price bracket, average purchase price
+
+df.m <- df %>% dplyr::select(category, datadog.score, POPULARITY.IN.US, LIFETIME.COST..., intelligence.category, size.category, price.bracket)
+
+#I usuwam wiersz "additional info" oraz pozbywam się brakujących obserwacji.
+df.m <- df.m[-c(1,133,144),]
+df.m <- na.omit(df.m)
+df.m$LIFETIME.COST... <- as.numeric(gsub('[$,]', '', df.m$LIFETIME.COST...))
+df.m[,3] <- as.numeric(df.m[,3])
+
+tab1 <- xtable(head(df.m)[1:4], digits = 2, include.rownames=TRUE, row.names = TRUE)
+print(tab1, type = "latex", table.placement = "H")
+tab2 <- xtable(head(df.m)[5:7], digits = 2, include.rownames=FALSE, row.names = FALSE, caption = "Ramka danych ,,best in show'' dla kilku pierwszych ras")
+print(tab2, type = "latex", table.placement = "H")
+
+dissimilarities <- daisy(df.m)
+dis.matrix <- as.matrix(dissimilarities)
+@
+
+Przeprowadzimy teraz klasyczne skalowanie wielowymiarowe dla tego zbioru danych. Najpierw sporządzimy diagramy Shepparda dla wymiarów z przedziału $\left[1,7\right]$.
+
+<<C2, echo=FALSE, eval=TRUE, results='asis', message=FALSE, warning=FALSE, fig.cap="Diagramy Sheparda">>=
+
+d.max <- 7
+stress.vec <- numeric(d.max)
+
+par(mfrow=c(2,4))
+
+for (d in 1:d.max)
+{
+  mds.k <- cmdscale(dis.matrix, k = d)
+  dist.mds.k <- dist(mds.k, method="euclidean") # odlegĹoĹci w nowej przestrzeni
+  dis.original <- dis.matrix
+  dist.mds.k <- as.matrix(dist.mds.k)
+  STRESS <- sum((dis.original-dist.mds.k)^2)
+  
+  stress.vec[d] <- STRESS
+  
+  # Diagram Sheparda
+  plot(dis.original,dist.mds.k, main=paste0("Shepard diagram (d=",d,")"),
+       cex=0.5, xlab = "original distance",  ylab="distance after MDS")
+  abline(coef=c(0,1), col="red", lty=2)
+  grid()
+  #legend(x="topleft",legend=paste("STRESS = ",signif(STRESS,3)), bg="azure2")
+}
+
+par(mfrow=c(1,1))
+
+@
+
+Widzimy, że dla $d\in\left[4,7\right]$ otrzymujemy już zadowalające wyniki. Wykorzystując kryterium STRESS spóbujemy odczytać, który wymiar jest optymalny.
+
+<<C3, echo=FALSE, eval=TRUE, results='asis', message=FALSE, warning=FALSE, fig.cap="Funkcja STRESS dla kolejnych wymiarów">>=
+###  STRESS vs. dimension
+plot(1:d.max, stress.vec, lwd=2, type="b", pch=19, xlab="dimension (d)", ylab="STRESS")
+title("STRESS vs. dimension")
+grid()
+@
+
+Teraz już możemy określić, że wymiarem dającym najlepsze wyniki jest $7$, czyli taki sam jak liczba cech w naszej ramce danych. Optymalny natomiast wydaje się wymiar $5$. Przeprowadzimy teraz skalowanie wielowymiarowe dla dwóch wymiarów.
+
+<<C4a, echo=FALSE, eval=TRUE, results='asis', fig.height=9, message=FALSE, warning=FALSE, fig.cap="Wizualizacja wyników MDS">>=
+mds.results <- cmdscale(dis.matrix, k=2)
+
+selected.dogs <- c("Dachshund", "Chihuahua", "Bulldog", "Pug", "Cairn Terrier", "Norfolk Terrier")
+
+label.m <- rownames(df.m)
+
+`%!in%` <- Negate(`%in%`)
+
+for (k in c(1:length(label.m))){
+  if (label.m[k] %!in% selected.dogs){
+    label.m[k] <- ""
+  }
+}
+
+df.m.subset = subset(df.m, size.category=="large")
+
+p1 <- ggplot(df.m) +
+  geom_point(aes(
+    x = mds.results[,1],
+    y = mds.results[,2],
+    colour = size.category,
+  )) +
+  theme(legend.position = "right") +
+  xlab("MDS.1") + 
+  ylab("MDS.2") +
+  geom_label_repel(aes(x = mds.results[,1], y = mds.results[,2], label = label.m),
+                box.padding   = 0.35, 
+                point.padding = 0.5,
+                segment.color = 'grey50')
+
+p2 <- ggplot(df.m) +
+  geom_point(aes(
+    x = mds.results[,1],
+    y = mds.results[,2],
+    colour = price.bracket,
+  )) +
+  theme(legend.position = "right") +
+  xlab("MDS.1") + 
+  ylab("MDS.2") +
+  geom_label_repel(aes(x = mds.results[,1], y = mds.results[,2], label = label.m),
+                box.padding   = 0.35, 
+                point.padding = 0.5,
+                segment.color = 'grey50')
+
+p3 <- ggplot(df.m) +
+  geom_point(aes(
+    x = mds.results[,1],
+    y = mds.results[,2],
+    colour = category,
+  )) +
+  theme(legend.position = "right") +
+  xlab("MDS.1") + 
+  ylab("MDS.2") +
+  geom_label_repel(aes(x = mds.results[,1], y = mds.results[,2], label = label.m),
+                box.padding   = 0.35, 
+                point.padding = 0.5,
+                segment.color = 'grey50') #+
+  #geom_hline(yintercept=0.1) +
+  #geom_hline(yintercept=0.2) +
+  #geom_hline(yintercept=-0.1) +
+  #geom_vline(xintercept=-0.1) +
+  #geom_vline(xintercept=0.1) +
+  #geom_vline(xintercept=-0.05)
+
+ggarrange(p1,p2,p3, ncol=1,nrow=3)
+
+@
+
+Widzimy, że całkiem dobrze zostały wyróżnione \verb+size.category+ oraz \verb+price.bracket+, natomiast trochę gorzej wygląda to dla cechy \verb+category+. Możemy zauważyć natomiast pewne skupiska danych na wykresie, które reprezentują podobne cechy. Spróbujemy je zaznaczyć.
+
+<<C4b, echo=FALSE, eval=TRUE, results='asis', message=FALSE, warning=FALSE, fig.cap="Wizualizacja MDS z wyróżnieniem grup">>=
+mds.df <- as.data.frame(mds.results) #MDS jako ramka danych
+gr.A <- subset(mds.df, V1 < -0.05 & V2 > 0.1) #ręczne wybieranie podzbiorów
+gr.B <- subset(mds.df, V1 < -0.19 & V2 < 0.08 & V2 > -0.2)
+gr.C <- subset(mds.df, V1 > -0.1 & V1 < 0.1 & V2 < -0.1)
+gr.D <- subset(mds.df, V1 > -0.03 & V1 < 0.19 & V2 > -0.1)
+gr.E <- subset(mds.df, V1 > 0.19 & V2 > -0.1)
+gr.none <-
+  subset(
+    mds.df,
+    !(V1 %in% gr.A[, 1]) &
+      !(V1 %in% gr.B[, 1]) &
+      !(V1 %in% gr.C[, 1]) & !(V1 %in% gr.D[, 1]) & !(V1 %in% gr.E[, 1])
+  ) #pozostałe obserwacje
+
+group_plot <- ggplot(df.m) +
+  geom_point(data = gr.A, aes(x = gr.A[, 1], y = gr.A[, 2]), color = "red") +
+  geom_point(data = gr.B, aes(x = gr.B[, 1], y = gr.B[, 2]), color = "blue") +
+  geom_point(data = gr.C, aes(x = gr.C[, 1], y = gr.C[, 2]), color = "orange") +
+  geom_point(data = gr.D, aes(x = gr.D[, 1], y = gr.D[, 2]), color = "purple") +
+  geom_point(data = gr.E, aes(x = gr.E[, 1], y = gr.E[, 2]), color = "darkgreen") +
+  geom_point(data = gr.none,
+             aes(x = gr.none[, 1], y = gr.none[, 2]),
+             color = "black") +
+  xlab("MDS.1") +
+  ylab("MDS.2") +
+  geom_label_repel(
+    aes(x = mds.results[, 1], y = mds.results[, 2], label = label.m),
+    box.padding   = 0.35,
+    point.padding = 0.5,
+    segment.color = 'grey50'
+  )
+theme_set(theme_cowplot())
+
+#dodanie obrazków
+
+ggdraw() +
+  draw_image(
+    "https://external-content.duckduckgo.com/iu/?u=https%3A%2F%2Fwww.perrosamigos.com%2FUploads%2Fperrosamigos.com%2FImagenesGrandes%2Fnorfolk-terrier.jpg&f=1&nofb=1",
+    x = -0.11,
+    y = -0.2,
+    scale = .13
+  ) +
+  draw_image(
+    "https://external-content.duckduckgo.com/iu/?u=http%3A%2F%2Fwww.pethealthnetwork.com%2Fsites%2Fdefault%2Ffiles%2Fcontent%2Fimages%2Fchihuahua-ancient-companion-purse-puppy-477641397.png&f=1&nofb=1",
+    x = -0.3,
+    y = -0.27,
+    scale = .13
+  ) + draw_plot(group_plot)
+
+@
+
+Spoglądając teraz na wszystkie wykresy możemy zauważyć, że niebieska grupa to głównie małe i budżetowe rasy, grupa czerwona to głównie średnie budżetowe rasy, w grupie fioletowej znalazły się rasy psów o średniej wielkości i średniej cenie, do grupy zielonej zakwalifikowaliśmy psy pracujące o średniej cenie utrzymania, a w grupie pomarańczowej obserwujemy małe psy o średniej cenie utrzymania, przede wszystkim psy miniaturki (typ \verb+toy+).
+
+<<C5, echo=FALSE, eval=TRUE, results='asis', message=FALSE, warning=FALSE, fig.cap="Wizualizacja MDS z wyróżnieniem grup">>=
+chosen.dogs <-
+  subset(df.m, rownames(df.m) %in% c("Norfolk Terrier", "Chihuahua"))
+
+tab1 <-
+  xtable(
+    chosen.dogs[1:4],
+    digits = 2,
+    include.rownames = TRUE,
+    row.names = TRUE
+  )
+print(tab1, type = "latex", table.placement = "H")
+tab2 <-
+  xtable(
+    chosen.dogs[5:7],
+    digits = 2,
+    include.rownames = FALSE,
+    row.names = FALSE,
+    caption = "Obserwacje odstające"
+  )
+print(tab2, type = "latex", table.placement = "H")
+@
+
+Widzimy również, że zaznaczone na czarno, odstające od sąsiednich grup rasy to \verb+Chihuahua+, na co może mieć wpływ wysoki wskaźnik \verb+lifetime.cost+ w opozycji do niskiej ceny, niewielkiego rozmiaru oraz faktu, że jest to rasa miniaturowa. Wyraźnie odstaje również \verb+Norfolk Terrier+, który również charakteryzuje się wysokim wskaźnikiem \verb+lifetime.cost+.
+
+
+W powyższej analizie otrzymaliśmy dobrą separację dla tylko dwóch zmiennych -- \verb+size.category+ i \verb+price.bracket+, natomiast w pozostałych przypadkach podobieństwa widać tylko w niektórych skupiskach na wykresie.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Podsumowanie}
+Poniżej wypunktujemy najważniejsze wnioski, jakie można wyciągnąć z przeprowadzanych analiz:
+\begin{itemize}
+\item algorytm \verb+k-means clustering+ wydaje się najlepiej sobie radzić z obserwacjami odstającymi,
+\item na dyskretyzację duży wpływ mają zdolności dyskryminacyjne badanej cechy,
+\item standaryzacja danych ma kluczowe znaczenie dla analizy PCA,
+\item na podstawie analizy PCA dla \verb+states.x77+ możemy stwierdzić, że stany na południu charakteryzują się wyraźnie niższą jakością życia niż stany z innych regionów, 
+\item skalowanie wielowymiarowe pozwala nam zwizualizować podobieństwa pomiędzy cechami jakościowymi oraz wyłonić obserwacje najbardziej wyróżniające się na tle pozostałych.
+\end{itemize}
+
+
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\end{document}
+
+
+
+
+
