@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="pl">
+    <head>
+        <meta charset="utf-8">
+        <title>Projekt TI 2020</title>
+        <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+        <script src="//ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
+        <script> 
+            $(function(){
+                $("#header").load("header.html");
+                $("#footer").load("footer.html");
+            });
+        </script>
+    </head>
+    <body>
+        <div id="header"></div>
+        <main>
+            <h1>Analiza danych</h1>
+            <div class="analysis">
+                <table class="green">
+                    <tbody>
+                    <tr>
+                    <td>
+                        <h4>1. Wgraj plik (.csv)</h4>
+                        <div class="insert_file">
+                            <form action="{{ url_for('analysis') }}" method="POST" enctype="multipart/form-data">
+                                <input class="inputfile" type="file" name="plik" id="file"><label for="file">Wybierz plik</label>
+                                <br>
+                                <input class="input_normal" type="submit" value="Zapisz">
+                            </form>
+                        </div>
+            {% if choose_data is none %}
+                        <p>Użyj powyższego przycisku aby wybrać plik, a następnie kliknij "Zapisz", aby wybrany plik został załadowany przez program.</p>
+                        <p>{{ error }}</p>
+                    </td>
+                    </tr>
+                    </tbody>
+                </table>
+                    
+            </div>
+            {% else %}
+                        <h4>2. Wybierz zmienne:</h4>
+                            <form class="select" action="{{ url_for('save_data') }}" method="POST" enctype="multipart/form-data">
+                                <select name=choose_categorical_data method="GET" action="/">
+                                    <option selected disabled>{{list_categorical_data_header}}</option>
+                                    {% for data in list_categorical_data %}
+                                       <option value= "{{data}}">{{data}}</option>
+                                    {% endfor %}
+                                </select>
+                                <select name="choose_data_1" method="GET" id="choose_data_1">
+                                    <option selected disabled>Zmienna X</option>
+                                    {% for data in choose_data %}
+                                         <option value= "{{data}}">{{data}}</option>
+                                    {% endfor %}
+                                </select>
+                                <select name="choose_data_2" method="GET" id="choose_data_2">
+                                    <option selected disabled>Zmienna Y</option>
+                                    {% for data in choose_data %}
+                                        <option value= "{{data}}">{{data}}</option>
+                                    {% endfor %}
+                                </select>
+                                <br><br>
+                                <p>Wybierz zmienne, które chcesz poddać analizie oraz na podstawie których program narysuje wykresy.</p>
+                                <button class="button_normal" type="submit">Zatwierdź</button>
+                            </form>
+                {% endif %}
+                    </td>
+
+                    {% if file_name is none %}
+                    {% else %}
+
+                    <td>
+                        <br>
+                        <h4>Załadowany plik: {{ file_name }}</h4>  
+                        <form action="{{ url_for('remove_data') }}" method="POST" enctype="multipart/form-data">
+                            <input class="button_reset" type="submit" name="usun" value="Wyczyść dane">
+                        </form>
+                        <br><br>
+                        {% if select_1 is none %}
+                        {% else %}
+                            Załadowane zmienne:
+                            <br><br>
+                                <div class="loaded">
+                                <table class="yellow">
+                                    <tr>
+                                        <td>
+                                            {{list_categorical_data_header}}
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            {{ select_categorical }}
+                                        </td>
+                                    </tr>
+                                </table>
+                                <br>
+                                <table class="yellow">
+                                    <tr>
+                                        <td>
+                                            Zmienna X
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            {{ select_1 }}
+                                        </td>
+                                    </tr>
+                                </table>
+                                <br>
+                                <table class="yellow">
+                                    <tr>
+                                        <td>
+                                            Zmienna Y
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            {{ select_2 }}
+                                        </td>
+                                    </tr>
+                                </table>
+                                </div>
+                        {% endif %}
+                    </td></tr>
+
+                    <tr>
+                    </tbody>
+                    </tr>
+                </table>
+            </div>
+            <div class="pause">
+
+            </div>
+
+            {% if select_1 is none %}
+            {% else %}
+            <div class="analysis_bottom">
+                {% if graph is none %}
+                {% else %}
+                <p><img alt="wykres" src="{{graph}}"></img></p>
+                {% endif %}
+                <details>
+                    <summary>Rozwiń/zwiń tabelę</summary>
+                    <div class="analysis">
+                        <br>
+                        <caption>Dane dla <b style="color:{{color}}">{{ select_categorical }}</b></caption>
+                        <br>
+                        <table class="blue">
+                            <tr>
+                                <td>
+                                    <b>{{select_1}}</b>
+                                </td>
+                                <td>
+                                    <b>{{select_2}}</b>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="color:red">
+                                    Średnia: <b>{{ average_X }}</b>
+                                </td>
+                                <td style="color:blue">
+                                    Średnia: <b>{{ average_Y }}</b>
+                                </td>
+                            </tr>
+                            {% if zip_table is none %}
+                            {% else %}
+                                {% for t in zip_table %}
+                                    <tr>
+                                    {% for i in t %}
+                                        <td>{{ i }}</td>
+                                    {% endfor %}
+                                    </tr>
+                                {% endfor %}
+                                 </table>
+                            {% endif %}
+                        </table>
+                    </div>
+                </details>
+                <br>
+            </div>
+            {% endif %}
+        {% endif %}
+        </main>
+
+    <div id="footer"></div>
+
+    </body>
+    
+</html>

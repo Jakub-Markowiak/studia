@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="pl">
+    <head>
+        <meta charset="utf-8">
+        <title>Projekt TI 2020</title>
+        <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+        <link href="https://fonts.googleapis.com/css2?family=Raleway&family=Ubuntu:ital@1&display=swap" rel="stylesheet">
+        <script src="//ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
+        <script> 
+            $(function(){
+                $("#header").load("header.html");
+                $("#footer").load("footer.html");
+            });
+        </script>
+    </head>
+    <body>
+        <div id="header"></div>
+        <main>
+            <h1>Strona główna</h1>
+            <div id="tytuł"></div>
+            <h2>Opis projektu</h2>
+        <div class="treść"></div>
+            <p>Projekt polega na stworzeniu w grupie strony internetowej znajdującej się na serwerze Heroku, która składa się z trzech podstron:</p>
+            <ol>
+                <li>Strony z opisem projektu oraz informacją na temat jej przeznaczenia<br></li><br>
+                <li>Strony z danymi kontaktowymi do twórców<br></li><br>
+                <li>Strony z analizą danych<br></li><br>
+            </ol>
+            <p>Stworzenie strony z&nbspanalizą danych polega na&nbspwgraniu pliku .csv zawierającego przynajmniej 3&nbspzmienne: 2&nbspzmiennie liczbowe oraz&nbsp1&nbspkategoryczną, po&nbspodebraniu go&nbsppowinny być wyświetlane 3&nbsplisty rozwijalne umożliwiające wybór zmiennych. Następnie należy wyświetlić tabelkę ze&nbspśrednimi danymi oraz&nbspwykres punktowy.</p>
+        <div id="tytuł"></div>
+            <h3>Przeznaczenie strony</h3>
+        <div class="treść"></div>
+            <p>Strona przeznaczona jest do&nbspanalizy danych liczbowych i&nbspkategorycznych. Listy pozwalają użytkownikowi wybrać zmienne, po&nbspczym wyświetlana jest tabelka zawierająca średnie dane oraz&nbspwykres punktowy, na&nbspktórym przedstawiona jest pierwsza zmienna liczbowa (odpowiada współrzędnej&nbspX), druga zmienna liczbowa (odpowiada współrzędnej Y), zmienna kategoryczna (odpowiada kolorowi punktu) oraz&nbspśrednie dane przedstawione w&nbsptabeli.</p>
+        </main>
+        <div id="footer"></div>
+
+    </body>
+    
+</html>

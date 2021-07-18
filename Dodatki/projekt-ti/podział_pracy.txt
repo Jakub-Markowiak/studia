@@ -1,0 +1,5 @@
+Paulina Giergasz: stylizacja CSS
+Aleksandra Żurek: Strona Główna
+Kacper Ciesielski: Strona "Kontakt"
+Jakub Markowiak: Strona "Analiza danych"
+Brighton Muzanenamo: Wykresy na stronie "Analiza Danych"

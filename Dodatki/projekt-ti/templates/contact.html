@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="pl">
+    <head>
+        <meta charset="utf-8">
+        <title>Projekt TI 2020</title>
+        <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+        <script src="//ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
+        <script> 
+            $(function(){
+                $("#header").load("header.html");
+                $("#footer").load("footer.html");
+            });
+        </script>
+    </head>
+    <body>
+        <div id="header"></div>
+        <main>
+            <h1>Kontakt</h1>
+            
+            <h2>Stronę tworzyli:</h2>
+
+            <table class="kontakt">
+                <tr>
+                    <th>Nazwisko</th>
+                    <th>Imię</th> 
+                    <th>Adres e-mail</th>
+                </tr>
+                <tr>
+                    <td>Giergasz</td>
+                    <td>Paulina</td>
+                    <td><a href="mailto:255704@student.pwr.edu.pl">255704@student.pwr.edu.pl</a></td>
+                    
+              </tr>
+              <tr>
+                    <td>Żurek</td>
+                    <td>Aleksandra</td>
+                    <td><a href="mailto:255704@student.pwr.edu.pl">255695@student.pwr.edu.pl</a></td>
+                    
+              </tr>
+              <tr>
+                    <td>Ciesielski</td>
+                    <td>Kacper</td>
+                    <td><a href="mailto:255704@student.pwr.edu.pl">255671@student.pwr.edu.pl</a></td>
+                    
+              </tr>
+              <tr>
+                    <td>Markowiak</td>
+                    <td>Jakub</td>
+                    <td><a href="mailto:255704@student.pwr.edu.pl">255705@student.pwr.edu.pl</a></td>
+                    
+              </tr>
+              <tr>
+                    <td>Muzanenamo</td>
+                    <td>Brighton</td>
+                    <td><a href="mailto:255704@student.pwr.edu.pl">253441@student.pwr.edu.pl</a></td>
+                    
+              </tr>
+            </table>
+           
+            
+        </main>
+        <div id="footer"></div>
+
+    </body>
+    
+</html>

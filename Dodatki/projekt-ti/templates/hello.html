@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="pl">
+    <head>
+        <meta charset="utf-8">
+        <title>Moja pierwsza strona na Heroku</title>
+        <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    </head>
+    <body>
+        <div>
+            <header>
+                Header
+            </header>
+        </div>
+        <div>
+            <nav>
+            Nav
+            </nav>  
+        </div>
+        <div>
+            <main>
+                <h1>Hello {{ who }}!</h1>
+                <p>from Flask!</p>
+                Treść
+           </main>
+        </div>
+        <footer>
+            Footer
+        </footer>
+
+    </body>
+</html>

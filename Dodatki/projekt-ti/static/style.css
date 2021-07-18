@@ -1,0 +1,335 @@
+html {
+    height: 100%;
+}
+
+body {
+    background: rgb(255, 255, 255);
+    color: rgb(0, 0, 0);
+    min-height: 100%;
+    padding: auto;
+    position: relative;
+    font-size: 1.2rem;
+    text-align: justify;
+    hyphens: auto;
+    font-family: 'Raleway', sans-serif;
+    margin-left: 0.3em;
+    margin-right: 0.3em;
+}
+
+p{
+  margin-left: 1em;
+  margin-right: 1em;
+}
+
+body::after{ content:''; display:block; height:100px; }
+
+h1{
+  color: rgb(22, 172, 247);
+  text-align: center;
+  text-transform: uppercase;
+  font-family: 'Ubuntu', sans-serif;
+  background-color: rgb(0, 28, 46);
+}
+
+h2{
+  color: rgb(95, 202, 255);
+  font-size: 1.3em;
+
+}
+
+h3{
+  color: rgb(95, 202, 255);
+  font-size: 1.3em;
+  margin-right: 1rem;
+}
+
+h4{
+  color: #222726;
+  font-family: 'Ubuntu', sans-serif;
+  font-size: 1.3em;
+}
+ h6{
+  text-align: center
+ }
+
+h10{
+  color: rgb(0, 28, 46);
+  font-size: 4rem;
+  font-style:'Lato', serif;
+  position: static;
+  vertical-align: middle;
+  float: right;
+  font-weight: 800;
+  font-family: 'Ubuntu', sans-serif;
+  margin-right: 1rem;
+
+}
+
+ul{
+  list-style-type: none;
+}
+
+ol{
+  margin-bottom: 0.5em;
+  margin-right: 0.5em;
+}
+
+table.blue {
+    border: 1px solid rgb(0, 28, 46);
+    background-color: #c2c388;
+    text-align: left;
+    border-collapse: collapse;
+    margin: auto;
+  }
+table.blue td, table.blue th {
+    border: 1px solid #222726;
+    padding: 3px 2px;
+  }
+table.blue tbody td {
+    font-size: 13px;
+  }
+table.blue tr:nth-child(even) {
+    background: #d6ad99;
+  }
+table.blue thead th {
+    font-size: 15px;
+    font-weight: bold;
+    color: #FFFFFF;
+    border-left: 2px solid #D0E4F5;
+  }
+table.blue thead th:first-child {
+    border-left: none;
+  }
+  
+table.blue tfoot {
+    font-size: 14px;
+    font-weight: bold;
+    color: #FFFFFF;
+    background: #D0E4F5;
+    background: -moz-linear-gradient(top, #dcebf7 0%, #d4e6f6 66%, #D0E4F5 100%);
+    background: -webkit-linear-gradient(top, #dcebf7 0%, #d4e6f6 66%, #D0E4F5 100%);
+    background: linear-gradient(to bottom, #dcebf7 0%, #d4e6f6 66%, #D0E4F5 100%);
+    border-top: 2px solid #444444;
+  }
+  table.blue tfoot td {
+    font-size: 14px;
+  }
+  table.blue tfoot .links {
+    text-align: right;
+  }
+  table.blue tfoot .links a{
+    display: inline-block;
+    background: #1C6EA4;
+    color: #FFFFFF;
+    padding: 2px 8px;
+    border-radius: 5px;
+  }
+
+.button_normal{
+  background-color: rgb(29, 32, 28);
+  border-color:rgb(61, 65, 62);
+  color: #c7bebe;
+  cursor: pointer;
+  }
+
+.button_reset{
+    background-color: rgb(170, 60, 46);
+    border-color:rgb(212, 71, 15);
+    color: #AAAAAA;
+    text-decoration: none;
+    margin: 4px 2px;
+    cursor: pointer;
+  }
+
+.input_normal{
+    background-color: rgb(29, 32, 28);
+    border-color:rgb(61, 65, 62);
+    color: #c7bebe;
+    text-decoration: none;
+    margin: 4px 2px;
+    cursor: pointer;
+  }
+
+  .inputfile {
+	width: 0.1px;
+	height: 0.1px;
+	opacity: 0;
+	overflow: hidden;
+	position: absolute;
+	z-index: -1;
+}
+
+.inputfile + label {
+    font-size: 1.25em;
+    font-weight: 700;
+    padding: 10px 10px 10px 10px;
+    color: rgb(199, 202, 202);
+    background-color: rgb(38, 47, 37);
+    display: inline-block;
+}
+
+.inputfile:focus + label,
+.inputfile + label:hover {
+    background-color: rgb(63, 70, 87);
+}
+
+.inputfile + label {
+	cursor: pointer; /* "hand" cursor */
+}
+.inputfile:focus + label {
+	outline: 1px dotted #000;
+	outline: -webkit-focus-ring-color auto 5px;
+}
+
+table.green {
+  font-family: Arial, Helvetica, sans-serif;
+  background-color: #c0aa77;
+  table-layout: fixed;
+  width: 100%;
+  height: 100%;
+  text-align: center;
+  border: 6px solid #55470D;
+}
+table.green td, table.green th {
+  padding: 5px 10px;
+}
+table.green tbody td {
+  font-weight: bold;
+  padding: 0 15px;
+  color: rgb(0, 0, 0);
+  width: 50%;
+}
+table.green tr:nth-child(even) {
+  background: #c08d42;
+}
+table.green td:nth-child(even) {
+  background: #c08d42;
+}
+
+.analysis {
+  margin: 0 10% 0 10%;
+  width: 80%;
+}
+
+.analysis_bottom {
+  margin: 0 10% 0 10%;
+  width: 80%;
+  background-color: #c0aa77;
+  border: 6px solid #55470D;
+  color: #000;
+  text-align: center;
+}
+
+
+.select {
+  position: relative;
+  display: inline-block;
+  margin-bottom: 15px;
+  width: 90%;
+}    .select select {
+      font-family: 'Arial';
+      display: inline-block;
+      width: 60%;
+      cursor: pointer;
+      padding: 14px 15px;
+      outline: 0;
+      border: 1px solid #55470D;
+      border-radius: 3px;
+      background: #493d3d;
+      color: #ffffff;
+      appearance: none;
+      text-align-last: center;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+  }
+      .select select::-ms-expand {
+          display: none;
+      }
+      .select select:hover,
+      .select select:focus {
+          color: #000000;
+          background: #c08d42;
+      }
+      .select select:disabled {
+          opacity: 0.4;
+          pointer-events: none;
+      }
+.select_arrow {
+  position: absolute;
+  top: 16px;
+  right: 15px;
+  pointer-events: none;
+  border-style: solid;
+  border-width: 8px 5px 0px 5px;
+  border-color: #d9ded4 transparent transparent transparent;
+}
+.select select:hover ~ .select_arrow,
+.select select:focus ~ .select_arrow {
+  border-top-color: #000000;
+}
+
+.loaded{
+  width: 50%;
+  margin-left:25%;
+}
+
+.pause{
+  margin-top: 50px;
+}
+
+.yellow {
+    background-color: #c3bb6e;
+    text-align: center;
+    width: 100%; 
+  }
+.yellow td, table.yellow th {
+    border: 2px solid #604B29;
+    padding: 3px 2px;
+  }
+.yellow tbody td {
+    font-size: 15px;
+  }
+.yellow thead {
+    background: #A48E72;
+    background: -moz-linear-gradient(top, #bbaa95 0%, #ad9980 66%, #A48E72 100%);
+    background: -webkit-linear-gradient(top, #bbaa95 0%, #ad9980 66%, #A48E72 100%);
+    background: linear-gradient(to bottom, #bbaa95 0%, #ad9980 66%, #A48E72 100%);
+  }
+.yellow thead th {
+    font-size: 15px;
+    font-weight: bold;
+    text-align: center;
+  }
+.yellow tfoot td {
+    font-size: 15px;
+  }
+.yellow tfoot .links {
+    text-align: right;
+  }
+.yellow tfoot .links a{
+    display: inline-block;
+    background: #1C6EA4;
+    color: #FFFFFF;
+    padding: 2px 8px;
+    border-radius: 5px;
+  }
+
+table.kontakt {
+  width: 60%;
+  border: 3px solid black;
+}
+
+table.kontakt th {
+  font-family: sans-serif;
+  background-color: #c0aa77;
+  border: 1px solid black;
+  text-align: center;
+  font-size: 17px;
+}
+
+table.kontakt td {
+  font-family: sans-serif;
+  background-color: #e3d8cc;
+  border: 1px solid black;
+  text-align: center;
+}
